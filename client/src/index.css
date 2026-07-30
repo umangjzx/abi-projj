@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Light and dark are declared as two sets of the same HSL custom properties, so
+   every component styles itself once against semantic names (`bg-background`,
+   `text-muted-foreground`) and inherits both themes for free.
+
+   The palette is built around a dairy-appropriate teal, with a warm cream
+   secondary that keeps the storefront from feeling clinical.
+--------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 174 84% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 44% 94%;
+    --secondary-foreground: 222 40% 18%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 45%;
+
+    --accent: 174 62% 94%;
+    --accent-foreground: 174 84% 24%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 62% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 20% 89%;
+    --input: 214 20% 89%;
+    --ring: 174 84% 32%;
+
+    --chart-1: 174 84% 32%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 32 95% 52%;
+    --chart-4: 262 70% 58%;
+    --chart-5: 340 75% 55%;
+    --chart-6: 152 62% 40%;
+
+    --radius: 0.7rem;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 30% 96%;
+
+    --card: 222 40% 11%;
+    --card-foreground: 210 30% 96%;
+
+    --popover: 222 40% 11%;
+    --popover-foreground: 210 30% 96%;
+
+    /* Lifted and slightly desaturated so it stays legible on a dark surface. */
+    --primary: 172 66% 46%;
+    --primary-foreground: 222 47% 9%;
+
+    --secondary: 222 30% 17%;
+    --secondary-foreground: 210 30% 94%;
+
+    --muted: 222 30% 15%;
+    --muted-foreground: 215 18% 65%;
+
+    --accent: 174 40% 20%;
+    --accent-foreground: 172 66% 72%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 52% 44%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 88% 52%;
+    --warning-foreground: 222 47% 9%;
+
+    --border: 222 25% 20%;
+    --input: 222 25% 22%;
+    --ring: 172 66% 46%;
+
+    --chart-1: 172 66% 50%;
+    --chart-2: 199 84% 60%;
+    --chart-3: 32 92% 60%;
+    --chart-4: 262 74% 70%;
+    --chart-5: 340 78% 66%;
+    --chart-6: 152 56% 52%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-display tracking-tight;
+  }
+
+  /* A visible focus ring is the only affordance keyboard users get -- never
+     remove it, only restyle it. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Respect a user's reduced-motion preference across every animation. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Screen-reader-only text that becomes visible when focused (skip links). */
+  .sr-only-focusable {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100]
+           focus:rounded-md focus:bg-primary focus:px-4 focus:py-2
+           focus:text-primary-foreground;
+  }
+
+  .glass {
+    @apply bg-background/80 backdrop-blur-md backdrop-saturate-150;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-lift;
+  }
+
+  /* Hides the scrollbar on horizontal rails without disabling scrolling. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-chart-2 bg-clip-text text-transparent;
+  }
+}
+
+@layer utilities {
+  /* Clamp helpers keep product cards a uniform height in a grid. */
+  .line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+}
+
+/* Custom scrollbar, light and dark. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: hsl(var(--muted)); }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 6px;
+  border: 2px solid hsl(var(--muted));
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.55); }
+
+/* Recharts injects inline SVG that ignores our focus styles; align it. */
+.recharts-wrapper:focus, .recharts-surface:focus { outline: none; }
+.recharts-cartesian-axis-tick text { font-size: 11px; fill: hsl(var(--muted-foreground)); }
+.recharts-legend-item-text { color: hsl(var(--muted-foreground)) !important; font-size: 12px; }

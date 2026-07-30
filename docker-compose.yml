@@ -1,0 +1,46 @@
+version: "3.9"
+
+# Optional local infrastructure. If you already have PostgreSQL installed
+# natively, you do not need this file -- just point DATABASE_URL at your server.
+#
+#   docker compose up -d
+#
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: thuthi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: thuthi
+      POSTGRES_PASSWORD: thuthi_secret
+      POSTGRES_DB: thuthi_dairy
+    ports:
+      - "5433:5432"
+    volumes:
+      - thuthi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thuthi -d thuthi_dairy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    container_name: thuthi_adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+
+  mailhog:
+    # Catches all outbound email in development. UI at http://localhost:8025
+    image: mailhog/mailhog:latest
+    container_name: thuthi_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  thuthi_pgdata:

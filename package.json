@@ -1,0 +1,22 @@
+{
+  "name": "thuthi-dairy-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web-Based Market Analysis and Product Recommendation System for Thuthi Dairy Private Limited",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "db:setup": "npm --prefix server run db:setup",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:api": "npm --prefix server run dev",
+    "dev:web": "npm --prefix client run dev",
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
+    "test": "npm --prefix server test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,886 @@
+// ============================================================================
+//  Thuthi Dairy Private Limited
+//  Market Analysis & Product Recommendation System -- data model
+//
+//  Conventions
+//    * Every table has a cuid() primary key and createdAt/updatedAt audit cols.
+//    * Money is stored as Decimal(12, 2) -- never Float -- to avoid rounding
+//      drift on invoices and revenue reports.
+//    * Every foreign key carries an explicit index (Postgres does not create
+//      them automatically) plus an onDelete rule chosen per relationship.
+//    * Business-immutable facts (price paid, product name at time of sale) are
+//      snapshotted onto OrderItem so historical reports never change when the
+//      catalogue is edited.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+//  Identity, roles & access control
+// ---------------------------------------------------------------------------
+
+/// Normalised role table backing RBAC. `permissions` holds fine grained scopes
+/// (e.g. ["product:write", "report:read"]) so new capabilities do not require
+/// a migration.
+model Role {
+  id          String   @id @default(cuid())
+  name        RoleName @unique
+  label       String
+  description String?
+  permissions String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@map("roles")
+}
+
+enum RoleName {
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  avatarUrl     String?
+  roleId        String
+  emailVerified Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  // Denormalised marketing/segmentation counters, kept fresh by the order
+  // service. Avoids a full aggregate scan on every customer list request.
+  totalOrders   Int       @default(0)
+  totalSpent    Decimal   @default(0) @db.Decimal(12, 2)
+  segment       Segment   @default(NEW)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  role                Role                  @relation(fields: [roleId], references: [id])
+  addresses           Address[]
+  cart                Cart?
+  orders              Order[]
+  wishlist            WishlistItem[]
+  reviews             Review[]
+  ratings             Rating[]
+  recentlyViewed      RecentlyViewed[]
+  otpTokens           OtpToken[]
+  refreshTokens       RefreshToken[]
+  notifications       Notification[]
+  activityLogs        ActivityLog[]
+  recommendations     Recommendation[]
+  recommendationLogs  RecommendationEvent[]
+  couponRedemptions   CouponRedemption[]
+  inventoryMovements  InventoryMovement[]   @relation("InventoryMovementActor")
+  orderStatusEvents   OrderStatusEvent[]    @relation("OrderStatusActor")
+
+  @@index([roleId])
+  @@index([segment])
+  @@index([createdAt])
+  @@map("users")
+}
+
+enum Segment {
+  NEW
+  ACTIVE
+  LOYAL
+  AT_RISK
+  CHURNED
+}
+
+/// Short lived one-time passwords for email verification, password reset and
+/// step-up flows. Codes are stored hashed, never in plain text.
+model OtpToken {
+  id        String   @id @default(cuid())
+  userId    String
+  codeHash  String
+  purpose   OtpPurpose
+  expiresAt DateTime
+  consumedAt DateTime?
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+  @@map("otp_tokens")
+}
+
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// Refresh tokens are persisted (hashed) so sessions can be revoked server
+/// side and rotation can detect token replay.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String   @default("Home")
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  landmark  String?
+  city      String
+  state     String
+  pincode   String
+  country   String   @default("India")
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
+  @@index([city])
+  @@index([pincode])
+  @@map("addresses")
+}
+
+// ---------------------------------------------------------------------------
+//  Catalogue
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  imageUrl    String?
+  parentId    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+  offers   Offer[]
+
+  @@index([parentId])
+  @@index([slug])
+  @@map("categories")
+}
+
+model Product {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  sku              String   @unique
+  shortDescription String?
+  description      String
+  categoryId       String
+  brand            String   @default("Butterman")
+  /// Fat / protein / shelf-life etc. Free-form so new attributes need no
+  /// migration, but always rendered from a known key list on the client.
+  attributes       Json     @default("{}")
+  tags             String[] @default([])
+  isActive         Boolean  @default(true)
+  isFeatured       Boolean  @default(false)
+  // Aggregates maintained on write so listing pages never fan out into
+  // per-product aggregate queries.
+  avgRating        Float    @default(0)
+  ratingCount      Int      @default(0)
+  reviewCount      Int      @default(0)
+  soldCount        Int      @default(0)
+  viewCount        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category          Category              @relation(fields: [categoryId], references: [id])
+  images            ProductImage[]
+  variants          ProductVariant[]
+  reviews           Review[]
+  ratings           Rating[]
+  wishlistedBy      WishlistItem[]
+  recentlyViewed    RecentlyViewed[]
+  orderItems        OrderItem[]
+  offers            Offer[]
+  recommendations   Recommendation[]      @relation("RecommendedProduct")
+  recommendedFrom   Recommendation[]      @relation("RecommendationSource")
+  affinityAsA       ProductAffinity[]     @relation("AffinityProductA")
+  affinityAsB       ProductAffinity[]     @relation("AffinityProductB")
+  recommendationLogs RecommendationEvent[]
+
+  @@index([categoryId])
+  @@index([isActive, isFeatured])
+  @@index([soldCount])
+  @@index([avgRating])
+  @@index([createdAt])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  publicId  String?
+  alt       String?
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+/// A sellable pack size, e.g. "Milk 500 ml pouch". Price and stock live on the
+/// variant, not the product, because dairy is sold in many pack sizes.
+model ProductVariant {
+  id         String   @id @default(cuid())
+  productId  String
+  name       String
+  sku        String   @unique
+  price      Decimal  @db.Decimal(12, 2)
+  mrp        Decimal  @db.Decimal(12, 2)
+  unit       String   @default("pc")
+  packSize   String?
+  weightGram Int?
+  isDefault  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  product    Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory  Inventory?
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  movements  InventoryMovement[]
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// ---------------------------------------------------------------------------
+//  Inventory
+// ---------------------------------------------------------------------------
+
+model Inventory {
+  id                String   @id @default(cuid())
+  variantId         String   @unique
+  stock             Int      @default(0)
+  /// Units held for placed-but-not-yet-delivered orders.
+  reserved          Int      @default(0)
+  lowStockThreshold Int      @default(15)
+  warehouse         String   @default("Main")
+  restockedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([stock])
+  @@map("inventory")
+}
+
+/// Append-only stock ledger. Current stock is derivable from this table, which
+/// makes inventory discrepancies auditable.
+model InventoryMovement {
+  id        String            @id @default(cuid())
+  variantId String
+  type      InventoryMovementType
+  quantity  Int
+  balance   Int
+  reason    String?
+  orderId   String?
+  actorId   String?
+  createdAt DateTime          @default(now())
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  order   Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  actor   User?          @relation("InventoryMovementActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([variantId, createdAt])
+  @@index([orderId])
+  @@index([type])
+  @@map("inventory_movements")
+}
+
+enum InventoryMovementType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT
+  DAMAGE
+  RESERVE
+  RELEASE
+}
+
+// ---------------------------------------------------------------------------
+//  Cart & wishlist
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  couponId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items  CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  variantId String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("wishlist_items")
+}
+
+model RecentlyViewed {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  viewedAt  DateTime @default(now())
+  viewCount Int      @default(1)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId, viewedAt])
+  @@map("recently_viewed")
+}
+
+// ---------------------------------------------------------------------------
+//  Promotions
+// ---------------------------------------------------------------------------
+
+model Coupon {
+  id            String       @id @default(cuid())
+  code          String       @unique
+  description   String?
+  discountType  DiscountType
+  value         Decimal      @db.Decimal(12, 2)
+  minOrderValue Decimal      @default(0) @db.Decimal(12, 2)
+  maxDiscount   Decimal?     @db.Decimal(12, 2)
+  usageLimit    Int?
+  usedCount     Int          @default(0)
+  perUserLimit  Int          @default(1)
+  startsAt      DateTime     @default(now())
+  expiresAt     DateTime?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  carts       Cart[]
+  orders      Order[]
+  redemptions CouponRedemption[]
+
+  @@index([code])
+  @@index([isActive, expiresAt])
+  @@map("coupons")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String
+  userId    String
+  orderId   String   @unique
+  discount  Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, userId])
+  @@map("coupon_redemptions")
+}
+
+/// Merchandising banners and category/product level promotions surfaced on the
+/// storefront. Distinct from Coupon, which is a checkout-time price rule.
+model Offer {
+  id              String    @id @default(cuid())
+  title           String
+  subtitle        String?
+  description     String?
+  bannerUrl       String?
+  bannerPublicId  String?
+  ctaLabel        String?
+  ctaHref         String?
+  type            OfferType @default(BANNER)
+  discountPercent Int?
+  categoryId      String?
+  productId       String?
+  priority        Int       @default(0)
+  startsAt        DateTime  @default(now())
+  endsAt          DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  product  Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, priority])
+  @@index([categoryId])
+  @@map("offers")
+}
+
+enum OfferType {
+  BANNER
+  CATEGORY_DISCOUNT
+  PRODUCT_DISCOUNT
+  COMBO
+}
+
+// ---------------------------------------------------------------------------
+//  Orders & payments
+// ---------------------------------------------------------------------------
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  userId      String
+  addressId   String?
+  couponId    String?
+  status      OrderStatus @default(PENDING)
+  subtotal    Decimal     @db.Decimal(12, 2)
+  discount    Decimal     @default(0) @db.Decimal(12, 2)
+  deliveryFee Decimal     @default(0) @db.Decimal(12, 2)
+  tax         Decimal     @default(0) @db.Decimal(12, 2)
+  total       Decimal     @db.Decimal(12, 2)
+  itemCount   Int         @default(0)
+  /// Frozen copy of the delivery address so an edited/deleted address never
+  /// rewrites history on past invoices.
+  shipTo      Json
+  notes       String?
+  placedAt    DateTime    @default(now())
+  confirmedAt DateTime?
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  cancelledAt DateTime?
+  cancelReason String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user             User               @relation(fields: [userId], references: [id])
+  address          Address?           @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  coupon           Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items            OrderItem[]
+  payment          Payment?
+  statusEvents     OrderStatusEvent[]
+  reviews          Review[]
+  couponRedemption CouponRedemption?
+  movements        InventoryMovement[]
+
+  @@index([userId, placedAt])
+  @@index([status])
+  @@index([placedAt])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PACKED
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String
+  variantId   String
+  // Snapshotted so reports and invoices are stable over time.
+  productName String
+  variantName String
+  sku         String
+  unitPrice   Decimal @db.Decimal(12, 2)
+  mrp         Decimal @db.Decimal(12, 2)
+  quantity    Int
+  lineTotal   Decimal @db.Decimal(12, 2)
+  imageUrl    String?
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("order_items")
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  actorId   String?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User? @relation("OrderStatusActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_events")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  amount          Decimal       @db.Decimal(12, 2)
+  transactionRef  String?       @unique
+  paidAt          DateTime?
+  refundedAt      DateTime?
+  gatewayResponse Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([method])
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  COD
+  UPI
+  CARD
+  NETBANKING
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// ---------------------------------------------------------------------------
+//  Ratings & reviews  (kept as separate entities: a customer may rate without
+//  writing prose, and reviews are moderated while ratings are not)
+// ---------------------------------------------------------------------------
+
+model Rating {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  value     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  review  Review?
+
+  @@unique([userId, productId])
+  @@index([productId, value])
+  @@map("ratings")
+}
+
+model Review {
+  id           String       @id @default(cuid())
+  userId       String
+  productId    String
+  ratingId     String?      @unique
+  orderId      String?
+  title        String?
+  comment      String
+  status       ReviewStatus @default(APPROVED)
+  helpfulCount Int          @default(0)
+  /// True when the reviewer actually bought the product.
+  isVerified   Boolean      @default(false)
+  adminReply   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating  Rating? @relation(fields: [ratingId], references: [id], onDelete: SetNull)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, productId])
+  @@index([productId, status])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ---------------------------------------------------------------------------
+//  Recommendation engine
+// ---------------------------------------------------------------------------
+
+/// Materialised recommendation slots. Personalised rows carry a userId;
+/// item-to-item rows ("customers also bought") carry a sourceProductId.
+model Recommendation {
+  id              String                 @id @default(cuid())
+  userId          String?
+  productId       String
+  sourceProductId String?
+  strategy        RecommendationStrategy
+  placement       RecommendationPlacement @default(HOME)
+  score           Float
+  reason          String?
+  generatedAt     DateTime               @default(now())
+  expiresAt       DateTime?
+
+  user          User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product       Product               @relation("RecommendedProduct", fields: [productId], references: [id], onDelete: Cascade)
+  sourceProduct Product?              @relation("RecommendationSource", fields: [sourceProductId], references: [id], onDelete: Cascade)
+  events        RecommendationEvent[]
+
+  @@unique([userId, productId, strategy, placement])
+  @@index([userId, placement, score])
+  @@index([sourceProductId, strategy])
+  @@index([strategy])
+  @@map("recommendations")
+}
+
+enum RecommendationStrategy {
+  PURCHASE_HISTORY
+  CATEGORY_AFFINITY
+  FREQUENTLY_BOUGHT_TOGETHER
+  POPULAR
+  COLLABORATIVE
+  RECENTLY_VIEWED
+  TRENDING
+}
+
+enum RecommendationPlacement {
+  HOME
+  PRODUCT_DETAIL
+  CART
+  CHECKOUT
+  CUSTOMER_DASHBOARD
+  SEARCH
+}
+
+/// Funnel telemetry used by the "Recommendation Performance" report:
+/// impression -> click -> add to cart -> purchase.
+model RecommendationEvent {
+  id               String                  @id @default(cuid())
+  recommendationId String?
+  userId           String?
+  productId        String
+  strategy         RecommendationStrategy
+  placement        RecommendationPlacement
+  event            RecommendationEventType
+  createdAt        DateTime                @default(now())
+
+  recommendation Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([strategy, event, createdAt])
+  @@index([placement, event])
+  @@index([userId])
+  @@index([productId])
+  @@map("recommendation_events")
+}
+
+enum RecommendationEventType {
+  IMPRESSION
+  CLICK
+  ADD_TO_CART
+  PURCHASE
+}
+
+/// Pre-computed item-to-item co-occurrence ("frequently bought together").
+/// Stored with productAId < productBId so each pair appears once.
+model ProductAffinity {
+  id           String   @id @default(cuid())
+  productAId   String
+  productBId   String
+  coOccurrence Int      @default(0)
+  /// Lift / confidence style score in [0, 1].
+  score        Float    @default(0)
+  computedAt   DateTime @default(now())
+
+  productA Product @relation("AffinityProductA", fields: [productAId], references: [id], onDelete: Cascade)
+  productB Product @relation("AffinityProductB", fields: [productBId], references: [id], onDelete: Cascade)
+
+  @@unique([productAId, productBId])
+  @@index([productAId, score])
+  @@index([productBId, score])
+  @@map("product_affinities")
+}
+
+// ---------------------------------------------------------------------------
+//  Analytics warehouse
+// ---------------------------------------------------------------------------
+
+/// Daily roll-ups written by the analytics job. Keeping a snapshot table means
+/// dashboards read O(days) rows instead of scanning the whole order history,
+/// and it preserves history even if source rows are archived.
+model AnalyticsSnapshot {
+  id        String        @id @default(cuid())
+  date      DateTime      @db.Date
+  metric    AnalyticsMetric
+  /// Break-down key, e.g. a category id or city name. Deliberately NOT
+  /// nullable: in Postgres a UNIQUE constraint treats every NULL as distinct,
+  /// so a nullable dimension would silently allow duplicate daily rows for the
+  /// same metric. Empty string means "no break-down".
+  dimension String        @default("")
+  value     Decimal       @db.Decimal(16, 4)
+  meta      Json?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([date, metric, dimension])
+  @@index([metric, date])
+  @@map("analytics_snapshots")
+}
+
+enum AnalyticsMetric {
+  REVENUE
+  ORDERS
+  UNITS_SOLD
+  NEW_CUSTOMERS
+  RETURNING_CUSTOMERS
+  AVERAGE_ORDER_VALUE
+  CANCELLED_ORDERS
+  CATEGORY_REVENUE
+  CITY_REVENUE
+  RECOMMENDATION_CLICKS
+  RECOMMENDATION_CONVERSIONS
+}
+
+// ---------------------------------------------------------------------------
+//  Notifications & audit
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String?
+  audience  NotificationAudience @default(USER)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  meta      Json?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([audience, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationAudience {
+  USER
+  ADMIN
+}
+
+enum NotificationType {
+  ORDER_PLACED
+  ORDER_STATUS
+  LOW_STOCK
+  OUT_OF_STOCK
+  NEW_OFFER
+  ACCOUNT
+  REVIEW
+  SYSTEM
+}
+
+/// Combined admin activity feed and security audit trail. Written by the
+/// `audit` middleware for every mutating admin request.
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  actorEmail String?
+  action     String
+  entity     String?
+  entityId   String?
+  method     String?
+  path       String?
+  statusCode Int?
+  ip         String?
+  userAgent  String?
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
