@@ -19,7 +19,11 @@ services:
     plan: free
     region: singapore
     rootDir: server
-    buildCommand: npm install && npm run build
+    # --include=dev is required: NODE_ENV=production (set below) makes plain
+    # `npm install` skip devDependencies, but tsc and the prisma CLI -- both
+    # needed by `npm run build` -- live there. Without this flag the build
+    # fails with "tsc: not found" / exit code 2.
+    buildCommand: npm install --include=dev && npm run build
     # Applies any pending migrations on every deploy/restart before the app
     # starts -- safe to run repeatedly (it only applies new migrations) and
     # means a fresh Blueprint deploy needs no manual migration step. Seeding
