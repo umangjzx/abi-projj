@@ -143,17 +143,40 @@ All strategies are blended per placement (Home/Product/Cart/Checkout/Dashboard/S
 
 ## 🔑 Demo Credentials
 
-Seeded automatically by `npm run db:seed` — use these to log in immediately:
+Seeded automatically by `npm run db:seed` (or `npm run db:setup`) — use these to log in immediately. **Every customer account uses the same password: `Customer@123`.**
 
-| Role | Email | Password |
-|---|---|---|
-| **Admin** | `admin@thuthidairy.com` | `Admin@123` |
-| Customer (loyal, has order history) | `priya@example.com` | `Customer@123` |
-| Customer | `arun@example.com` | `Customer@123` |
-| Customer | `ananya@example.com` | `Customer@123` |
-| Customer | *(any seeded customer — see `server/prisma/seed-data.ts`)* | `Customer@123` |
+### Admin
 
-> All 18 seeded customers share the password `Customer@123`. The admin dashboard, analytics, recommendations and reports only have meaningful data because the seed also generates ~12 months of synthetic order history, reviews, and recommendation telemetry.
+| Email | Password |
+|---|---|
+| `admin@thuthidairy.com` | `Admin@123` |
+
+### Customers
+
+All passwords are `Customer@123`. The `profile` column shows the buying behaviour seeded for that account (useful for testing the recommendation engine and RFM segmentation — `loyal` accounts have the richest order/recommendation history).
+
+| Name | Email | Password | City | Profile |
+|---|---|---|---|---|
+| Priya Raghavan | `priya@example.com` | `Customer@123` | Coimbatore | loyal |
+| Arun Kumar | `arun@example.com` | `Customer@123` | Coimbatore | loyal |
+| Meena Lakshmi | `meena@example.com` | `Customer@123` | Tiruppur | regular |
+| Vikram Shetty | `vikram@example.com` | `Customer@123` | Chennai | regular |
+| Deepa Nair | `deepa@example.com` | `Customer@123` | Kochi | regular |
+| Suresh Babu | `suresh@example.com` | `Customer@123` | Coimbatore | occasional |
+| Ananya Iyer | `ananya@example.com` | `Customer@123` | Bengaluru | loyal |
+| Rahul Menon | `rahul@example.com` | `Customer@123` | Chennai | occasional |
+| Kavitha Subramanian | `kavitha@example.com` | `Customer@123` | Salem | regular |
+| Joseph Thomas | `joseph@example.com` | `Customer@123` | Kochi | occasional |
+| Sneha Patel | `sneha@example.com` | `Customer@123` | Bengaluru | regular |
+| Karthik Rajan | `karthik@example.com` | `Customer@123` | Madurai | loyal |
+| Divya Krishnan | `divya@example.com` | `Customer@123` | Coimbatore | regular |
+| Mohammed Ashraf | `ashraf@example.com` | `Customer@123` | Tiruppur | occasional |
+| Lakshmi Priya | `lakshmipriya@example.com` | `Customer@123` | Chennai | churned |
+| Ganesh Moorthy | `ganesh@example.com` | `Customer@123` | Salem | churned |
+| Aishwarya Balan | `aishwarya@example.com` | `Customer@123` | Coimbatore | new |
+| Nitin Verma | `nitin@example.com` | `Customer@123` | Bengaluru | new |
+
+> Source of truth: [`server/prisma/seed-data.ts`](server/prisma/seed-data.ts) (`CUSTOMER_SEEDS`). The admin dashboard, analytics, recommendations and reports only have meaningful data because the seed also generates ~12 months of synthetic order history, reviews, and recommendation telemetry on top of these accounts.
 
 ---
 
