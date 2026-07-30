@@ -110,7 +110,7 @@ export function AddressForm({
         <Input id="landmark" value={form.landmark} onChange={set('landmark')} placeholder="Near…" />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Label htmlFor="city">City</Label>
           <Input id="city" required value={form.city} onChange={set('city')} />

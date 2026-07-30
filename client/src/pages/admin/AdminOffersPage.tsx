@@ -195,7 +195,7 @@ export default function AdminOffersPage() {
                 <Input id="offer-cta-href" value={form.ctaHref} onChange={(e) => setForm((f) => ({ ...f, ctaHref: e.target.value }))} placeholder="/products?category=milk" />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Type</Label>
                 <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as OfferFormValues['type'] }))}>

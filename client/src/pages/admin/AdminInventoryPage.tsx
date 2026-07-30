@@ -263,7 +263,7 @@ function AbcAnalysisPanel() {
         <TableSkeleton rows={8} cols={5} />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {data.summary.map((s) => (
               <StatCard
                 key={s.class}
