@@ -6,6 +6,35 @@ A production-ready, full-stack web application for **Thuthi Dairy Private Limite
 
 ---
 
+## 🌐 Live Deployment
+
+| Piece | URL | Host |
+|---|---|---|
+| Storefront + Admin | **https://abi-projj.vercel.app** | Vercel |
+| REST API | **https://thuthi-dairy-api.onrender.com/api/v1** | Render (free web service, Singapore region) |
+| Database | Render-managed PostgreSQL (`thuthi_dairy_db`, Singapore region) | Render |
+
+Sign in at the live URL above with any credential from [Demo Credentials](#-demo-credentials). Render's free tier sleeps after 15 minutes of inactivity — the first request after a nap takes ~30–50s to wake the API before the rest of the app responds normally.
+
+---
+
+## 📑 Table of Contents
+
+- [Architecture](#-architecture)
+- [Features](#-features)
+- [Tech Stack](#-tech-stack)
+- [Database Schema](#️-database-schema)
+- [Demo Credentials](#-demo-credentials)
+- [Getting Started](#-getting-started)
+- [Useful Scripts](#-useful-scripts)
+- [Project Structure](#-project-structure)
+- [API Overview](#-api-overview)
+- [Testing](#-testing)
+- [Deployment](#️-deployment)
+- [Security Notes](#-security-notes)
+
+---
+
 ## 📐 Architecture
 
 ```mermaid
@@ -20,7 +49,7 @@ flowchart TB
         Query["TanStack Query\n(cache + data fetching)"]
     end
 
-    subgraph Backend["Backend — Node.js + Express (Render / Railway)"]
+    subgraph Backend["Backend — Node.js + Express (Render)"]
         API["REST API\n/api/v1/*"]
         Auth["Auth Module\nJWT + Refresh + OTP + RBAC"]
         Catalog["Catalog / Cart / Orders"]
@@ -31,7 +60,7 @@ flowchart TB
     end
 
     subgraph Data["Data Layer"]
-        Postgres[("PostgreSQL\nvia Prisma ORM\n31 models")]
+        Postgres[("PostgreSQL\nvia Prisma ORM\n30 models")]
         Cloudinary["Cloudinary\n(product images)"]
         SMTP["SMTP / Mail\n(OTP, order emails)"]
     end
@@ -159,6 +188,25 @@ All strategies are blended per placement (Home/Product/Cart/Checkout/Dashboard/S
 
 ---
 
+## 🗄️ Database Schema
+
+30 Prisma models ([`server/prisma/schema.prisma`](server/prisma/schema.prisma)), grouped by domain:
+
+| Domain | Models |
+|---|---|
+| Identity & auth | `Role`, `User`, `OtpToken`, `RefreshToken` |
+| Customer profile | `Address` |
+| Catalog | `Category`, `Product`, `ProductImage`, `ProductVariant` |
+| Inventory | `Inventory`, `InventoryMovement` |
+| Shopping | `Cart`, `CartItem`, `WishlistItem`, `RecentlyViewed` |
+| Promotions | `Coupon`, `CouponRedemption`, `Offer` |
+| Orders & payments | `Order`, `OrderItem`, `OrderStatusEvent`, `Payment` |
+| Feedback | `Rating`, `Review` |
+| Recommendations | `Recommendation`, `RecommendationEvent`, `ProductAffinity` |
+| Analytics & ops | `AnalyticsSnapshot`, `Notification`, `ActivityLog` |
+
+---
+
 ## 🔑 Demo Credentials
 
 Seeded automatically by `npm run db:seed` (or `npm run db:setup`) — use these to log in immediately. **Every customer account uses the same password: `Customer@123`.**
@@ -254,6 +302,51 @@ SMTP and Cloudinary are **optional** in development:
 - No `SMTP_HOST` → verification/reset emails are written to `server/storage/mail-outbox.log` instead of being sent.
 - No Cloudinary credentials → uploaded images are stored on local disk under `server/uploads/`.
 
+<details>
+<summary><strong>Full environment variable reference</strong> (click to expand)</summary>
+
+#### `server/.env` (from [`server/.env.example`](server/.env.example))
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NODE_ENV` | `development` | `production` skips devDependency install on some hosts — see [render.yaml](render.yaml) note |
+| `PORT` | `5000` | API listen port |
+| `API_PREFIX` | `/api/v1` | Base path mounted for all routes |
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated allow-list of browser origins |
+| `CLIENT_URL` | `http://localhost:5173` | Used in emails (verification/reset links) |
+| `DATABASE_URL` | — | Postgres connection string (Prisma) |
+| `JWT_ACCESS_SECRET` | — | Signs short-lived access tokens (≥32 chars) |
+| `JWT_REFRESH_SECRET` | — | Signs long-lived refresh tokens (≥32 chars) |
+| `JWT_ACCESS_EXPIRES_IN` | `15m` | Access token lifetime |
+| `JWT_REFRESH_EXPIRES_IN` | `30d` | Refresh token lifetime |
+| `BCRYPT_ROUNDS` | `10` | Password hashing cost factor |
+| `OTP_TTL_MINUTES` | `10` | Email OTP validity window |
+| `OTP_MAX_ATTEMPTS` | `5` | Max wrong-OTP attempts before lockout |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` | Block login until email is verified |
+| `SMTP_HOST` | *(empty)* | Leave empty to log mail to file instead of sending |
+| `SMTP_PORT` | `1025` | SMTP port (`1025` = MailHog via docker-compose) |
+| `SMTP_SECURE` | `false` | Use TLS for SMTP |
+| `SMTP_USER` / `SMTP_PASS` | *(empty)* | SMTP auth credentials |
+| `MAIL_FROM` | `"Thuthi Dairy <no-reply@thuthidairy.com>"` | From-address on outgoing mail |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | *(empty)* | Leave empty to store uploads on local disk instead |
+| `CLOUDINARY_FOLDER` | `thuthi-dairy` | Cloudinary folder for uploaded images |
+| `LOG_LEVEL` | `info` | Pino logger verbosity |
+| `RATE_LIMIT_WINDOW_MINUTES` | `15` | General API rate-limit window |
+| `RATE_LIMIT_MAX` | `600` | Max requests per window (general) |
+| `AUTH_RATE_LIMIT_MAX` | `25` | Max requests per window on `/auth/*` |
+| `DELIVERY_FEE` | `25` | Flat delivery fee (₹) |
+| `FREE_DELIVERY_THRESHOLD` | `499` | Order subtotal (₹) above which delivery is free |
+| `TAX_PERCENT` | `5` | GST percentage applied at checkout |
+| `LOW_STOCK_THRESHOLD` | `15` | Default per-variant low-stock threshold |
+
+#### `client/.env` (from [`client/.env.example`](client/.env.example))
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_API_URL` | *(unset — proxied to `localhost:5000` in dev)* | Deployed API base URL, **must** include `/api/v1` in production |
+
+</details>
+
 ### 4. Run migrations + seed demo data
 
 ```bash
@@ -323,7 +416,7 @@ abi-proj/
 │
 ├── server/                  # Express REST API
 │   ├── prisma/
-│   │   ├── schema.prisma    # 31 models: users, products, orders, recs, analytics…
+│   │   ├── schema.prisma    # 30 models: users, products, orders, recs, analytics…
 │   │   ├── migrations/
 │   │   └── seed.ts          # 12-month synthetic dataset generator
 │   ├── src/
@@ -341,28 +434,232 @@ abi-proj/
 
 ## 🔌 API Overview
 
-Base URL: `/api/v1`
-
-| Prefix | Purpose |
-|---|---|
-| `/auth` | Register, login, verify-email, forgot/reset password, refresh, logout |
-| `/products`, `/categories` | Catalog browsing + admin CRUD |
-| `/cart`, `/wishlist`, `/addresses` | Customer shopping state |
-| `/orders` | Checkout, tracking, invoice, admin status updates |
-| `/coupons`, `/offers` | Promotions |
-| `/reviews` | Ratings & reviews + moderation |
-| `/recommendations` | Personalized feed, home rails, telemetry, admin monitoring |
-| `/inventory` *(admin)* | Stock levels, adjustments, movement ledger |
-| `/customers` *(admin)* | Customer list, detail, segmentation |
-| `/analytics` *(admin)* | Dashboard KPIs, sales/product/customer analytics, forecast, ABC inventory analysis (`/analytics/inventory/abc`), RFM scoring (`/analytics/customers/rfm`), K-Means clustering (`/analytics/customers/clusters`) |
-| `/reports` *(admin)* | Sales/Revenue/Product/Customer/Inventory/Recommendation reports (PDF/Excel/CSV) |
-| `/admin` *(admin)* | Activity/audit log, runtime settings |
-| `/uploads` *(admin)* | Image upload (Cloudinary or local disk) |
+Base URL: `/api/v1` (locally `http://localhost:5000/api/v1`, live `https://thuthi-dairy-api.onrender.com/api/v1`)
 
 Every response follows the envelope:
 ```json
 { "success": true, "data": { ... }, "meta": { "page": 1, "total": 42 } }
 ```
+
+Errors follow: `{ "success": false, "error": { "code": "...", "message": "..." } }`.
+
+<details>
+<summary><strong>Full endpoint reference</strong> — every route, method, and auth requirement (click to expand)</summary>
+
+### `/auth`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/register` | public (rate-limited) | Register new account |
+| POST | `/login` | public (rate-limited) | Log in and issue session |
+| POST | `/verify-email` | public (rate-limited) | Verify email with OTP |
+| POST | `/resend-otp` | public (rate-limited) | Resend OTP code |
+| POST | `/forgot-password` | public (rate-limited) | Request password reset |
+| POST | `/reset-password` | public (rate-limited) | Reset password with token |
+| POST | `/refresh` | public (CSRF check) | Refresh access token from cookie |
+| POST | `/logout` | public (CSRF check) | Log out and clear session |
+| GET | `/me` | requireAuth | Get current user profile |
+| PATCH | `/me` | requireAuth | Update current user profile |
+| POST | `/change-password` | requireAuth (rate-limited) | Change own password |
+
+### `/categories`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/` | public | List categories |
+| GET | `/:id` | public | Get category by id |
+| POST | `/` | admin | Create category |
+| PATCH | `/:id` | admin | Update category |
+| DELETE | `/:id` | admin | Delete category |
+
+### `/products`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/suggest` | public | Search-as-you-type suggestions |
+| GET | `/filters` | public | Available filter metadata |
+| GET | `/` | optional | List products (search/filter/sort/paginate) |
+| GET | `/:id` | optional | Get product detail |
+| GET | `/:id/related` | public | Related products |
+| POST | `/` | admin | Create product |
+| PATCH | `/:id` | admin | Update product |
+| PATCH | `/:id/featured` | admin | Toggle featured flag |
+| DELETE | `/:id` | admin | Delete product |
+
+### `/cart` *(all routes require auth)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | Get current user's cart |
+| POST | `/items` | Add item to cart |
+| PATCH | `/items/:id` | Update cart item quantity |
+| DELETE | `/items/:id` | Remove cart item |
+| DELETE | `/` | Clear cart |
+| POST | `/coupon` | Apply coupon to cart |
+| DELETE | `/coupon` | Remove coupon from cart |
+
+### `/coupons`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/available` | auth | Coupons usable on current cart |
+| POST | `/preview` | auth | Preview discount for a code |
+| GET | `/` | admin | List all coupons |
+| POST | `/` | admin | Create coupon |
+| PATCH | `/:id` | admin | Update coupon |
+| DELETE | `/:id` | admin | Delete coupon |
+
+### `/wishlist` *(all routes require auth)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | List wishlist items |
+| GET | `/ids` | Wishlisted product ids only |
+| POST | `/` | Add product to wishlist |
+| POST | `/toggle` | Toggle product in/out of wishlist |
+| DELETE | `/:productId` | Remove one product |
+| DELETE | `/` | Clear entire wishlist |
+
+### `/addresses` *(all routes require auth)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | List own addresses |
+| POST | `/` | Create new address |
+| PATCH | `/:id` | Update own address |
+| POST | `/:id/default` | Set as default address |
+| DELETE | `/:id` | Delete own address |
+
+### `/orders` *(all routes require auth)*
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/all` | admin | List all orders |
+| PATCH | `/:id/status` | admin | Update order status (guarded transitions) |
+| GET | `/` | auth | List own orders |
+| GET | `/stats` | auth | Own order statistics |
+| POST | `/` | auth | Place a new order (checkout) |
+| GET | `/track/:orderNumber` | auth | Track order by order number |
+| GET | `/:id` | auth | Get order detail |
+| GET | `/:id/invoice` | auth | Download PDF invoice |
+| POST | `/:id/cancel` | auth | Cancel own order |
+
+### `/inventory` *(admin, all routes)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | List inventory with filters |
+| GET | `/summary` | Inventory summary stats |
+| GET | `/alerts` | Low-stock alerts |
+| GET | `/movements` | Stock movement history |
+| POST | `/:variantId/adjust` | Adjust stock quantity for a variant |
+| PATCH | `/:variantId/threshold` | Set low-stock threshold for a variant |
+
+### `/reviews`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/` | optional | List product reviews |
+| POST | `/` | auth | Create a review |
+| PATCH | `/:id` | auth | Edit own review |
+| DELETE | `/:id` | auth | Delete own review (admin: any) |
+| GET | `/mine` | auth | Own reviews + pending-review products |
+| POST | `/:id/helpful` | auth | Mark review as helpful |
+| PATCH | `/:id/moderate` | admin | Approve/reject review, add admin reply |
+
+### `/recommendations`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/` | optional | Personalized recommendation feed |
+| GET | `/home` | optional | Homepage rails (featured/bestsellers/trending) |
+| GET | `/recently-viewed` | auth | List recently viewed products |
+| DELETE | `/recently-viewed` | auth | Clear browsing history |
+| POST | `/track` | optional | Track impression/click/cart event |
+| GET | `/admin/performance` | admin | Recommendation performance stats |
+| GET | `/admin/slots` | admin | Active recommendation slots |
+| GET | `/admin/affinities` | admin | Top product affinities |
+| GET | `/admin/coverage` | admin | Recommendation coverage stats |
+| POST | `/admin/rebuild` | admin | Manually rebuild recommendation model |
+
+### `/analytics` *(admin, all routes)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/me` | Own customer dashboard overview *(auth, not admin)* |
+| GET | `/dashboard` | Admin dashboard overview |
+| GET | `/kpis` | KPI metrics |
+| GET | `/sales` | Sales time series |
+| GET | `/sales/monthly` | Monthly sales totals |
+| GET | `/seasonal` | Seasonal trend analysis |
+| GET | `/heatmap` | Order heat map (weekday × hour) |
+| GET | `/products` | Product performance metrics |
+| GET | `/products/demand` | Product demand metrics |
+| GET | `/categories` | Category performance metrics |
+| GET | `/customers/growth` | Customer growth series |
+| GET | `/customers/retention` | Customer retention rate |
+| GET | `/customers/segments` | Customer segment breakdown |
+| GET | `/customers/top` | Top customers by value |
+| GET | `/customers/locations` | Customer geographic breakdown |
+| GET | `/orders/status` | Order status breakdown |
+| GET | `/payments` | Payment method breakdown |
+| GET | `/forecast` | Statistical demand/sales forecast |
+| GET | `/snapshots` | Historical metric snapshots |
+| GET | `/inventory/abc` | ABC (Pareto) inventory classification |
+| GET | `/customers/rfm` | RFM customer scoring |
+| GET | `/customers/clusters` | K-Means customer clustering |
+| POST | `/snapshots/rebuild` | Rebuild daily snapshots manually |
+
+### `/reports` *(admin, all routes)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | List available report types |
+| GET | `/:type` | JSON preview of a report |
+| GET | `/:type/export` | Export report as PDF/Excel/CSV (rate-limited) |
+
+### `/offers`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/active` | public | List active storefront offers |
+| GET | `/` | admin | List all offers |
+| POST | `/` | admin | Create offer |
+| PATCH | `/:id` | admin | Update offer |
+| DELETE | `/:id` | admin | Delete offer + its banner image |
+
+### `/notifications` *(all routes require auth)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | List own notifications |
+| GET | `/unread-count` | Unread notification count |
+| PATCH | `/:id/read` | Mark notification as read |
+| POST | `/read-all` | Mark all as read |
+| DELETE | `/:id` | Delete a notification |
+
+### `/customers` *(admin, all routes)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | List customers |
+| GET | `/:id` | Get customer detail |
+| PATCH | `/:id/status` | Activate/deactivate customer |
+| POST | `/segments/recompute` | Recompute RFM/behavioural segments |
+| POST | `/counters/resync` | Resync customer order counters |
+
+### `/uploads` *(admin, all routes)*
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/image` | Upload a single image |
+| POST | `/images` | Upload up to 8 images |
+| DELETE | `/` | Delete an uploaded image |
+| GET | `/config` | Upload provider/limits config |
+
+### `/admin` *(admin, all routes)*
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/activity` | Audit/activity log |
+| GET | `/settings` | Effective runtime configuration |
+
+</details>
+
+### Scheduled jobs (`server/src/jobs/scheduler.ts`)
+
+An in-process `setInterval` scheduler (no external cron dependency — fine for a single-instance deployment; every job is idempotent and safe to re-run):
+
+| Job | Interval | Purpose |
+|---|---|---|
+| Daily analytics snapshot | 1h (runs on start) | Rewrites today's + yesterday's analytics snapshot |
+| Recompute customer segments | 12h (runs on start) | Recomputes NEW/ACTIVE/LOYAL/AT_RISK/CHURNED segments |
+| Rebuild product affinities | 6h | Recomputes item-to-item co-occurrence pairs |
+| Clear expired recommendation slots | 2h | Removes stale personalized-slot cache entries |
+| Low-stock sweep | 6h | Flags low-stock variants, notifies admins (max once/24h) |
+| Purge stale tokens | 12h | Deletes expired refresh tokens + old OTP tokens |
 
 ---
 
@@ -382,6 +679,8 @@ For manual/E2E verification, sign in with the demo credentials above and walk th
 ---
 
 ## ☁️ Deployment
+
+**This project is already deployed live** — see [Live Deployment](#-live-deployment) at the top for URLs. The steps below are for redeploying, forking, or standing up your own copy.
 
 This repo ships with ready-to-use deployment configs — **[render.yaml](render.yaml)** (Blueprint for the API + a free managed Postgres) and **[client/vercel.json](client/vercel.json)** (SPA rewrites for the frontend). Free-tier options for all three pieces:
 
