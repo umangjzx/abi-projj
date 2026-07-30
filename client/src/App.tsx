@@ -53,6 +53,7 @@ const AdminCouponsPage = lazy(() => import('./pages/admin/AdminCouponsPage'));
 const AdminRecommendationsPage = lazy(() => import('./pages/admin/AdminRecommendationsPage'));
 const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'));
 const AdminActivityPage = lazy(() => import('./pages/admin/AdminActivityPage'));
+const AdminNotificationsPage = lazy(() => import('./pages/admin/AdminNotificationsPage'));
 
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -154,6 +155,7 @@ export default function App() {
               <Route path="recommendations" element={<AdminRecommendationsPage />} />
               <Route path="reports" element={<AdminReportsPage />} />
               <Route path="activity" element={<AdminActivityPage />} />
+              <Route path="notifications" element={<AdminNotificationsPage />} />
             </Route>
 
             {/* Legacy/typo-friendly aliases */}

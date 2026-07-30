@@ -9,6 +9,7 @@ import { validate, idParam, safeText } from '../../middleware/validate';
 import { auditLog } from '../../middleware/audit';
 import { productService } from '../catalog/product.service';
 import { REVENUE_STATUSES } from '../orders/order.service';
+import { logger } from '../../lib/logger';
 
 export const reviewRouter = Router();
 
@@ -264,6 +265,8 @@ reviewRouter.patch(
     }),
   }),
   asyncHandler(async (req, res) => {
+    const before = await prisma.review.findUnique({ where: { id: req.params.id }, select: { status: true } });
+
     const review = await prisma.review.update({
       where: { id: req.params.id },
       data: {
@@ -275,6 +278,29 @@ reviewRouter.patch(
 
     // Approval status feeds the public review count aggregate.
     if (req.body.status) await productService.refreshRatingAggregates(review.productId);
+
+    // Only notify on an actual status change, and only for the two outcomes
+    // a customer would want to know about -- not every admin-reply edit.
+    if (req.body.status && req.body.status !== before?.status && (req.body.status === 'APPROVED' || req.body.status === 'REJECTED')) {
+      void prisma.notification
+        .create({
+          data: {
+            userId: review.userId,
+            type: 'REVIEW',
+            title:
+              req.body.status === 'APPROVED'
+                ? `Your review of ${review.product?.name ?? 'a product'} is live`
+                : `Your review of ${review.product?.name ?? 'a product'} wasn't approved`,
+            message:
+              req.body.status === 'APPROVED'
+                ? 'Thanks for sharing your feedback -- other customers can now see it.'
+                : review.adminReply || 'It did not meet our review guidelines. Contact support if you have questions.',
+            link: review.product ? `/products/${review.product.slug}` : undefined,
+          },
+        })
+        .catch((err) => logger.warn({ err, reviewId: review.id }, 'review moderation notification failed'));
+    }
+
     return ok(res, serialize(review));
   }),
 );

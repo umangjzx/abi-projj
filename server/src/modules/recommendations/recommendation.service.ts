@@ -45,6 +45,32 @@ interface Candidate {
   reason: string;
 }
 
+/**
+ * Tacks a concrete, trust- or urgency-building clause onto a strategy's base
+ * reason, using data the product already carries (rating, review count,
+ * discount, stock) -- so "Bestseller" becomes "Bestseller -- rated 4.6★ by 82
+ * customers" instead of a bare label with nothing behind it. Caps at two
+ * clauses so it still reads as one sentence, not a wall of badges.
+ */
+function buildPersuasiveReason(base: string, product: ReturnType<typeof serializeProduct>): string {
+  const clauses: string[] = [];
+
+  if (product.avgRating >= 4.3 && product.ratingCount >= 3) {
+    clauses.push(`rated ${product.avgRating}★ by ${product.ratingCount} customer${product.ratingCount === 1 ? '' : 's'}`);
+  } else if (product.soldCount >= 50) {
+    clauses.push(`${product.soldCount}+ already sold`);
+  }
+
+  const variant = product.defaultVariant;
+  if (variant?.discountPercent >= 10) {
+    clauses.push(`${variant.discountPercent}% off right now`);
+  } else if (variant?.isLowStock) {
+    clauses.push(`only ${variant.stock} left in stock`);
+  }
+
+  return clauses.length ? `${base} — ${clauses.join(', ')}` : base;
+}
+
 export const recommendationService = {
   // ------------------------------------------------------------- strategies ---
 
@@ -513,15 +539,18 @@ export const recommendationService = {
     // A product may have been deactivated between scoring and hydration.
     const hydrated = winners
       .filter((w) => byId.has(w.productId))
-      .map((w) => ({
-        ...serializeProduct(byId.get(w.productId)),
-        recommendation: {
-          strategy: w.strategy,
-          score: Number(w.score.toFixed(4)),
-          reason: w.reason,
-          placement: opts.placement,
-        },
-      }));
+      .map((w) => {
+        const product = serializeProduct(byId.get(w.productId));
+        return {
+          ...product,
+          recommendation: {
+            strategy: w.strategy,
+            score: Number(w.score.toFixed(4)),
+            reason: buildPersuasiveReason(w.reason, product),
+            placement: opts.placement,
+          },
+        };
+      });
 
     // Persist the slots so the admin can audit what was served, and log
     // impressions for the performance report.

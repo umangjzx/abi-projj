@@ -210,7 +210,7 @@ export function AdminLayout() {
             </Button>
 
             <Button variant="ghost" size="icon" asChild className="relative">
-              <Link to="/admin/activity" aria-label={`${unread} unread notifications`}>
+              <Link to="/admin/notifications" aria-label={`${unread} unread notifications`}>
                 <Bell />
                 {unread > 0 && (
                   <Badge

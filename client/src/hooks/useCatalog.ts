@@ -187,8 +187,13 @@ export function useNotifications() {
     queryKey: catalogKeys.notifications,
     queryFn: () => api.list<Notification[]>('/notifications?limit=15'),
     enabled: isAuthenticated,
-    // Polled so the bell badge updates without a manual refresh.
+    // Polled so the bell badge updates without a manual refresh. Unlike most
+    // queries in this app, this one also refetches on window focus -- coming
+    // back to the tab is exactly when someone glances at the bell, and a
+    // 90s-stale unread count reads as "notifications are broken".
     refetchInterval: 90_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
