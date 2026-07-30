@@ -1,0 +1,103 @@
+# Render Blueprint -- https://render.com/docs/blueprint-spec
+#
+# Deploys the Express API as a free Web Service and provisions a free managed
+# PostgreSQL instance, wiring DATABASE_URL between them automatically.
+#
+# Usage: In the Render dashboard, "New +" -> "Blueprint" -> point at this repo.
+# After the first deploy, run the one-off "Migrate & seed" job below (or run
+# `npm run db:setup` yourself via the Render shell) to create the schema and
+# load demo data.
+#
+# CORS_ORIGINS and CLIENT_URL are left blank here -- set them to your Vercel
+# domain in the Render dashboard once the frontend is deployed, since Render
+# cannot know that URL ahead of time.
+
+services:
+  - type: web
+    name: thuthi-dairy-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    buildCommand: npm install && npm run build
+    # Applies any pending migrations on every deploy/restart before the app
+    # starts -- safe to run repeatedly (it only applies new migrations) and
+    # means a fresh Blueprint deploy needs no manual migration step. Seeding
+    # is deliberately NOT run here: `db:seed` wipes existing data, which must
+    # never happen automatically on a restart of a live deployment.
+    startCommand: npx prisma migrate deploy && npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: API_PREFIX
+        value: /api/v1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: thuthi-dairy-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: BCRYPT_ROUNDS
+        value: 10
+      - key: OTP_TTL_MINUTES
+        value: 10
+      - key: OTP_MAX_ATTEMPTS
+        value: 5
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "false" # flip to "true" once SMTP is configured below
+      - key: SMTP_HOST
+        value: ""
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        value: ""
+      - key: SMTP_PASS
+        value: ""
+      - key: MAIL_FROM
+        value: "Thuthi Dairy <no-reply@thuthidairy.com>"
+      - key: CLOUDINARY_CLOUD_NAME
+        value: ""
+      - key: CLOUDINARY_API_KEY
+        value: ""
+      - key: CLOUDINARY_API_SECRET
+        value: ""
+      - key: CLOUDINARY_FOLDER
+        value: thuthi-dairy
+      - key: LOG_LEVEL
+        value: info
+      - key: RATE_LIMIT_WINDOW_MINUTES
+        value: 15
+      - key: RATE_LIMIT_MAX
+        value: 600
+      - key: AUTH_RATE_LIMIT_MAX
+        value: 25
+      - key: DELIVERY_FEE
+        value: 25
+      - key: FREE_DELIVERY_THRESHOLD
+        value: 499
+      - key: TAX_PERCENT
+        value: 5
+      - key: LOW_STOCK_THRESHOLD
+        value: 15
+      # Set these once the frontend is deployed -- see the note above.
+      - key: CORS_ORIGINS
+        value: "http://localhost:5173"
+      - key: CLIENT_URL
+        value: "http://localhost:5173"
+
+databases:
+  - name: thuthi-dairy-db
+    plan: free
+    region: singapore

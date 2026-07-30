@@ -109,6 +109,50 @@ export const CATEGORIES: SeedCategory[] = [
           { name: '1 L pouch', price: 47, mrp: 53, unit: 'pouch', packSize: '1 L', weightGram: 1000, stock: 110 },
         ],
       },
+      {
+        name: 'Cow Milk Tetra Pack',
+        shortDescription: 'Long-life UHT milk, no refrigeration needed until opened.',
+        description:
+          'Ultra-heat-treated milk in an aseptic tetra carton, sealed to stay fresh unrefrigerated for months. Ideal for stocking up, travel, or households without daily delivery access.',
+        tags: ['milk', 'uht', 'tetra pack', 'long life'],
+        attributes: { 'Fat content': '3.5%', Treatment: 'UHT', 'Shelf life': '90 days unopened', Type: 'Cow milk' },
+        popularity: 30,
+        image: img('photo-1600788907416-456578634209'),
+        variants: [
+          { name: '1 L tetra pack', price: 68, mrp: 76, unit: 'carton', packSize: '1 L', weightGram: 1000, stock: 160, isDefault: true },
+          { name: '200 ml tetra pack', price: 16, mrp: 18, unit: 'carton', packSize: '200 ml', weightGram: 200, stock: 220 },
+        ],
+      },
+      {
+        name: 'Organic A2 Buffalo Milk',
+        shortDescription: 'Certified-organic buffalo milk from grass-fed herds.',
+        description:
+          'Sourced from a certified-organic farm where buffaloes graze on pesticide-free pasture. Richer and creamier than regular buffalo milk, with none of the antibiotics or growth hormones used on conventional dairy farms.',
+        tags: ['milk', 'organic', 'buffalo', 'a2', 'premium'],
+        attributes: { 'Fat content': '7.0%', Certification: 'Organic', Feed: 'Pesticide-free pasture', Type: 'Buffalo milk' },
+        isFeatured: true,
+        popularity: 38,
+        image: img('photo-1571212515416-fef01fc43637'),
+        variants: [
+          { name: '500 ml pouch', price: 72, mrp: 82, unit: 'pouch', packSize: '500 ml', weightGram: 500, stock: 60, isDefault: true },
+          { name: '1 L pouch', price: 138, mrp: 158, unit: 'pouch', packSize: '1 L', weightGram: 1000, stock: 40 },
+        ],
+      },
+      {
+        name: 'Skimmed Milk Powder',
+        shortDescription: 'Instant, fat-free milk powder for baking and beverages.',
+        description:
+          'Spray-dried skimmed milk that dissolves instantly in warm water. A pantry staple for households that run short between deliveries, and a common base for baking and homemade sweets.',
+        tags: ['milk', 'powder', 'skimmed', 'pantry', 'baking'],
+        attributes: { 'Fat content': '<1.5%', Form: 'Spray-dried powder', 'Shelf life': '12 months unopened' },
+        popularity: 20,
+        seasonality: 0.85,
+        image: img('photo-1563636619-e9143da7973b'),
+        variants: [
+          { name: '200 g pack', price: 95, mrp: 110, unit: 'pack', packSize: '200 g', weightGram: 200, stock: 90, isDefault: true },
+          { name: '500 g pack', price: 220, mrp: 250, unit: 'pack', packSize: '500 g', weightGram: 500, stock: 55 },
+        ],
+      },
     ],
   },
   {
@@ -178,6 +222,48 @@ export const CATEGORIES: SeedCategory[] = [
           { name: 'Mango 100 g', price: 25, mrp: 30, unit: 'cup', packSize: '100 g', weightGram: 100, stock: 140, isDefault: true },
           { name: 'Strawberry 100 g', price: 25, mrp: 30, unit: 'cup', packSize: '100 g', weightGram: 100, stock: 130 },
           { name: 'Mixed berry 100 g', price: 27, mrp: 32, unit: 'cup', packSize: '100 g', weightGram: 100, stock: 95 },
+        ],
+      },
+      {
+        name: 'Hung Curd',
+        shortDescription: 'Strained curd, thick enough to stand a spoon in.',
+        description:
+          'Regular curd hung in muslin for hours to drain the whey, leaving a dense, almost cheese-like texture. The base for dips, kebabs marinades and a richer alternative to cream in cooking.',
+        tags: ['curd', 'hung curd', 'chakka', 'cooking'],
+        attributes: { Texture: 'Dense, strained', 'Fat content': '5.0%', 'Best for': 'Dips, marinades, shrikhand' },
+        popularity: 32,
+        image: img('photo-1571212515416-fef01fc43637'),
+        variants: [
+          { name: '200 g cup', price: 55, mrp: 62, unit: 'cup', packSize: '200 g', weightGram: 200, stock: 100, isDefault: true },
+          { name: '500 g tub', price: 128, mrp: 145, unit: 'tub', packSize: '500 g', weightGram: 500, stock: 60 },
+        ],
+      },
+      {
+        name: 'Probiotic Drinking Yoghurt',
+        shortDescription: 'Live-culture yoghurt drink in mango and plain.',
+        description:
+          'A pourable, live-culture yoghurt drink with billions of probiotic CFUs per bottle. Lighter than lassi, meant to be drunk straight from the bottle rather than eaten with a spoon.',
+        tags: ['yoghurt', 'probiotic', 'drink', 'gut health'],
+        attributes: { Culture: 'Live probiotic (Lactobacillus)', Flavours: 'Plain, mango', 'Serve': 'Chilled' },
+        popularity: 26,
+        seasonality: 1.15,
+        image: img('photo-1600718374662-0483d2b9da44'),
+        variants: [
+          { name: 'Plain 200 ml', price: 38, mrp: 44, unit: 'bottle', packSize: '200 ml', weightGram: 200, stock: 110, isDefault: true },
+          { name: 'Mango 200 ml', price: 40, mrp: 46, unit: 'bottle', packSize: '200 ml', weightGram: 200, stock: 95 },
+        ],
+      },
+      {
+        name: 'Paneer Yoghurt Dip',
+        shortDescription: 'Herbed yoghurt-paneer dip for snacks and wraps.',
+        description:
+          'Crumbled paneer folded into thick curd with roasted cumin, mint and a touch of garlic. Ready to scoop with chips or spread inside a roll -- no prep needed.',
+        tags: ['yoghurt', 'dip', 'paneer', 'snack'],
+        attributes: { 'Main ingredients': 'Curd, paneer, herbs', 'Serve': 'Chilled', 'Shelf life': '5 days refrigerated' },
+        popularity: 18,
+        image: img('photo-1631452180519-c014fe946bc7'),
+        variants: [
+          { name: '150 g tub', price: 65, mrp: 75, unit: 'tub', packSize: '150 g', weightGram: 150, stock: 70, isDefault: true },
         ],
       },
     ],
@@ -250,6 +336,47 @@ export const CATEGORIES: SeedCategory[] = [
           { name: '1 L tin', price: 1120, mrp: 1280, unit: 'tin', packSize: '1 L', weightGram: 1000, stock: 28 },
         ],
       },
+      {
+        name: 'Garlic Herb Butter',
+        shortDescription: 'Compound butter folded with roasted garlic and herbs.',
+        description:
+          'Table butter whipped with roasted garlic, parsley and a touch of black pepper. Melts straight onto garlic bread, grilled corn or a hot dosa without needing a separate spread.',
+        tags: ['butter', 'garlic', 'herb', 'compound butter'],
+        attributes: { 'Milk fat': '78%', Flavour: 'Roasted garlic & herbs', Type: 'Compound butter' },
+        popularity: 24,
+        image: img('photo-1603569283847-aa295f0d016a'),
+        variants: [
+          { name: '150 g tub', price: 95, mrp: 108, unit: 'tub', packSize: '150 g', weightGram: 150, stock: 80, isDefault: true },
+        ],
+      },
+      {
+        name: 'Cultured French-Style Butter',
+        shortDescription: 'Slow-cultured butter with a tangy, complex flavour.',
+        description:
+          'Cream is cultured for 12 hours before churning, the way European-style butter is made, giving it a mild tang that plain butter does not have. Best appreciated on warm bread rather than melted into a dish.',
+        tags: ['butter', 'cultured', 'premium', 'european style'],
+        isFeatured: true,
+        attributes: { 'Milk fat': '82%', Method: 'Slow-cultured (12 hr)', Style: 'European' },
+        popularity: 22,
+        image: img('photo-1589985270826-4b7bb135bc9d'),
+        variants: [
+          { name: '200 g block', price: 175, mrp: 195, unit: 'block', packSize: '200 g', weightGram: 200, stock: 50, isDefault: true },
+        ],
+      },
+      {
+        name: 'Cow Ghee Value Pack',
+        shortDescription: 'Everyday cow ghee in a large refill tin.',
+        description:
+          'The same pure cow ghee, packed in a larger tin for households that go through it quickly. A refill-friendly option for cooking rather than the smaller bilona jars meant for finishing dishes.',
+        tags: ['ghee', 'cow ghee', 'value pack', 'family size'],
+        attributes: { Source: 'Cow milk', 'Pack type': 'Value / refill tin', 'Shelf life': '12 months' },
+        popularity: 28,
+        seasonality: 0.8,
+        image: img('photo-1631206753348-db44968fd440'),
+        variants: [
+          { name: '2 L tin', price: 2450, mrp: 2750, unit: 'tin', packSize: '2 L', weightGram: 2000, stock: 22, isDefault: true },
+        ],
+      },
     ],
   },
   {
@@ -314,6 +441,47 @@ export const CATEGORIES: SeedCategory[] = [
         variants: [
           { name: 'Plain 180 g', price: 115, mrp: 130, unit: 'tub', packSize: '180 g', weightGram: 180, stock: 90, isDefault: true },
           { name: 'Herb & garlic 180 g', price: 125, mrp: 140, unit: 'tub', packSize: '180 g', weightGram: 180, stock: 75 },
+        ],
+      },
+      {
+        name: 'Paneer Tikka Marinated',
+        shortDescription: 'Ready-to-grill paneer cubes in a tandoori marinade.',
+        description:
+          'Fresh paneer cubes pre-marinated in yoghurt, tandoori spice and mustard oil. Straight onto a hot pan or grill -- no marinating time needed on a weeknight.',
+        tags: ['paneer', 'tikka', 'marinated', 'ready to cook', 'grill'],
+        attributes: { 'Main ingredients': 'Paneer, yoghurt, tandoori spice', 'Preparation': 'Grill or pan-fry', 'Shelf life': '4 days refrigerated' },
+        isFeatured: true,
+        popularity: 42,
+        image: img('photo-1631452180519-c014fe946bc7'),
+        variants: [
+          { name: '250 g pack', price: 145, mrp: 165, unit: 'pack', packSize: '250 g', weightGram: 250, stock: 85, isDefault: true },
+        ],
+      },
+      {
+        name: 'Cheddar Cheese Block',
+        shortDescription: 'Aged cheddar with a firm bite and a sharp finish.',
+        description:
+          'Matured longer than our mozzarella for a firmer texture and a noticeably sharper flavour. Grates well over pasta or slices cleanly for a cheese board.',
+        tags: ['cheese', 'cheddar', 'aged', 'block'],
+        attributes: { Type: 'Aged cheddar', 'Milk fat': '30%', Texture: 'Firm', 'Ageing': '6 months' },
+        popularity: 30,
+        image: img('photo-1486297678162-eb2a19b0a32d'),
+        variants: [
+          { name: '200 g block', price: 195, mrp: 220, unit: 'block', packSize: '200 g', weightGram: 200, stock: 65, isDefault: true },
+          { name: '500 g block', price: 460, mrp: 520, unit: 'block', packSize: '500 g', weightGram: 500, stock: 35 },
+        ],
+      },
+      {
+        name: 'Cream Cheese',
+        shortDescription: 'Soft, tangy cream cheese for bagels and baking.',
+        description:
+          'A mild, slightly tangy cream cheese with a smooth spreadable texture -- built for bagels, cheesecake batter and frosting rather than melting into a hot dish.',
+        tags: ['cheese', 'cream cheese', 'baking', 'spread'],
+        attributes: { Texture: 'Smooth, spreadable', 'Milk fat': '33%', 'Best for': 'Bagels, cheesecake, frosting' },
+        popularity: 26,
+        image: img('photo-1452195100486-9cc805987862'),
+        variants: [
+          { name: '200 g tub', price: 165, mrp: 185, unit: 'tub', packSize: '200 g', weightGram: 200, stock: 60, isDefault: true },
         ],
       },
     ],
@@ -385,6 +553,65 @@ export const CATEGORIES: SeedCategory[] = [
           { name: 'Mango (pack of 6)', price: 195, mrp: 225, unit: 'pack', packSize: '6 x 60 ml', weightGram: 360, stock: 72 },
         ],
       },
+      {
+        name: 'Gulab Jamun',
+        shortDescription: 'Soft khoya dumplings soaked in cardamom syrup.',
+        description:
+          'Khoya and a little flour, shaped by hand, fried gently and soaked in warm cardamom-and-rose syrup until they swell soft all the way through. Serve warm or at room temperature.',
+        tags: ['sweets', 'gulab jamun', 'khoya', 'syrup', 'festive'],
+        attributes: { 'Main ingredients': 'Khoya, sugar syrup, cardamom', 'Serve': 'Warm or room temperature', 'Shelf life': '5 days' },
+        isFeatured: true,
+        popularity: 46,
+        seasonality: 0.7,
+        image: img('photo-1601050690597-df0568f70950'),
+        variants: [
+          { name: '500 g tin (10 pc)', price: 175, mrp: 200, unit: 'tin', packSize: '500 g', weightGram: 500, stock: 75, isDefault: true },
+          { name: '1 kg tin (20 pc)', price: 330, mrp: 375, unit: 'tin', packSize: '1 kg', weightGram: 1000, stock: 40 },
+        ],
+      },
+      {
+        name: 'Shrikhand',
+        shortDescription: 'Sweetened hung curd with saffron and pistachio.',
+        description:
+          'Hung curd whipped smooth with sugar, a pinch of saffron and crushed pistachio. Served chilled -- a Gujarati and Maharashtrian festive staple that doubles as a light dessert any day.',
+        tags: ['sweets', 'shrikhand', 'saffron', 'hung curd', 'chilled'],
+        attributes: { 'Main ingredients': 'Hung curd, saffron, pistachio', Serve: 'Chilled', 'Shelf life': '5 days refrigerated' },
+        popularity: 34,
+        seasonality: 1.2,
+        image: img('photo-1488477181946-6428a0291777'),
+        variants: [
+          { name: '200 g cup', price: 85, mrp: 98, unit: 'cup', packSize: '200 g', weightGram: 200, stock: 70, isDefault: true },
+          { name: '500 g tub', price: 195, mrp: 225, unit: 'tub', packSize: '500 g', weightGram: 500, stock: 40 },
+        ],
+      },
+      {
+        name: 'Rabri',
+        shortDescription: 'Slow-reduced sweetened milk, layered and chilled.',
+        description:
+          'Full cream milk simmered for hours until it reduces and layers into thick, sweet ribbons. Traditionally topped with pistachio and a few strands of saffron, served chilled.',
+        tags: ['sweets', 'rabri', 'reduced milk', 'chilled', 'festive'],
+        attributes: { 'Main ingredients': 'Reduced milk, sugar, saffron', Garnish: 'Pistachio', Serve: 'Chilled' },
+        popularity: 24,
+        seasonality: 0.75,
+        image: img('photo-1563636619-e9143da7973b'),
+        variants: [
+          { name: '250 g cup', price: 110, mrp: 125, unit: 'cup', packSize: '250 g', weightGram: 250, stock: 45, isDefault: true },
+        ],
+      },
+      {
+        name: 'Basundi',
+        shortDescription: 'Cardamom-and-nut thickened sweet milk.',
+        description:
+          'Milk reduced to about a third of its volume and sweetened with sugar, cardamom and chopped nuts. Lighter than rabri, closer to a drinkable dessert -- served chilled in small bowls.',
+        tags: ['sweets', 'basundi', 'reduced milk', 'nuts', 'chilled'],
+        attributes: { 'Main ingredients': 'Reduced milk, cardamom, nuts', Serve: 'Chilled', 'Shelf life': '3 days refrigerated' },
+        popularity: 20,
+        seasonality: 0.75,
+        image: img('photo-1571212515416-fef01fc43637'),
+        variants: [
+          { name: '250 ml cup', price: 95, mrp: 108, unit: 'cup', packSize: '250 ml', weightGram: 250, stock: 42, isDefault: true },
+        ],
+      },
     ],
   },
   {
@@ -436,6 +663,198 @@ export const CATEGORIES: SeedCategory[] = [
         variants: [
           { name: '200 ml bottle', price: 45, mrp: 52, unit: 'bottle', packSize: '200 ml', weightGram: 200, stock: 105, isDefault: true },
           { name: '500 ml bottle', price: 105, mrp: 120, unit: 'bottle', packSize: '500 ml', weightGram: 500, stock: 58 },
+        ],
+      },
+      {
+        name: 'Cold Coffee',
+        shortDescription: 'Chilled, blended coffee with a thick milk froth.',
+        description:
+          'Espresso-strength coffee blended with full cream milk, sugar and ice until frothy. Bottled cold and meant to be drunk within the day -- no syrups, no preservatives.',
+        tags: ['coffee', 'cold coffee', 'chilled', 'beverage'],
+        attributes: { Base: 'Espresso + full cream milk', Serve: 'Chilled', 'Shelf life': '2 days refrigerated' },
+        popularity: 30,
+        seasonality: 1.6,
+        image: img('photo-1509042239860-f550ce710b93'),
+        variants: [
+          { name: '250 ml bottle', price: 60, mrp: 70, unit: 'bottle', packSize: '250 ml', weightGram: 250, stock: 90, isDefault: true },
+        ],
+      },
+      {
+        name: 'Rose Milk',
+        shortDescription: 'Chilled milk flavoured with rose syrup and basil seeds.',
+        description:
+          'Cold milk sweetened with rose syrup, finished with a spoon of soaked basil (sabja) seeds. A South Indian summer classic, served over ice.',
+        tags: ['milk', 'rose milk', 'summer', 'beverage', 'chilled'],
+        attributes: { Flavour: 'Rose', Base: 'Chilled milk', Garnish: 'Basil (sabja) seeds' },
+        popularity: 26,
+        seasonality: 1.8,
+        image: img('photo-1600718374662-0483d2b9da44'),
+        variants: [
+          { name: '250 ml bottle', price: 35, mrp: 40, unit: 'bottle', packSize: '250 ml', weightGram: 250, stock: 100, isDefault: true },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Ice Creams & Frozen',
+    description: 'Classic scoopable tubs and bars, made with real cream and no gelatin.',
+    image: img('photo-1563805042-7684c019e1cb'),
+    products: [
+      {
+        name: 'Vanilla Bean Ice Cream',
+        shortDescription: 'Classic vanilla with visible bean flecks, churned slow.',
+        description:
+          'Made with real vanilla bean rather than essence, churned slowly to keep ice-crystal size small so it stays creamy straight from the freezer. No gelatin, no stabiliser gums.',
+        tags: ['ice cream', 'vanilla', 'frozen', 'dessert'],
+        attributes: { Flavour: 'Vanilla bean', 'Milk fat': '10%', Stabilisers: 'None', 'Store at': '-18°C' },
+        isFeatured: true,
+        popularity: 40,
+        seasonality: 1.9,
+        image: img('photo-1563805042-7684c019e1cb'),
+        variants: [
+          { name: '500 ml tub', price: 165, mrp: 190, unit: 'tub', packSize: '500 ml', weightGram: 500, stock: 70, isDefault: true },
+          { name: '1 L tub', price: 300, mrp: 340, unit: 'tub', packSize: '1 L', weightGram: 1000, stock: 45 },
+        ],
+      },
+      {
+        name: 'Belgian Chocolate Ice Cream',
+        shortDescription: 'Dense chocolate ice cream made with real cocoa.',
+        description:
+          'Belgian dark cocoa churned into cream for a dense, not-too-sweet chocolate ice cream. The kind that leaves your spoon coated rather than just tinted brown.',
+        tags: ['ice cream', 'chocolate', 'frozen', 'dessert'],
+        attributes: { Flavour: 'Belgian chocolate', 'Milk fat': '11%', 'Store at': '-18°C' },
+        isFeatured: true,
+        popularity: 44,
+        seasonality: 1.7,
+        image: img('photo-1600718374662-0483d2b9da44'),
+        variants: [
+          { name: '500 ml tub', price: 175, mrp: 200, unit: 'tub', packSize: '500 ml', weightGram: 500, stock: 65, isDefault: true },
+          { name: '1 L tub', price: 320, mrp: 360, unit: 'tub', packSize: '1 L', weightGram: 1000, stock: 38 },
+        ],
+      },
+      {
+        name: 'Mango Alphonso Ice Cream',
+        shortDescription: 'Seasonal Alphonso mango pulp folded into cream.',
+        description:
+          'Made only when good Alphonso mango pulp is available, folded through vanilla cream rather than using mango essence. Expect real fruit fibre in every scoop.',
+        tags: ['ice cream', 'mango', 'seasonal', 'frozen'],
+        attributes: { Flavour: 'Alphonso mango', 'Fruit content': '18%', Availability: 'Seasonal' },
+        popularity: 32,
+        seasonality: 2.3,
+        image: img('photo-1488900128323-21503983a07e'),
+        variants: [
+          { name: '500 ml tub', price: 195, mrp: 225, unit: 'tub', packSize: '500 ml', weightGram: 500, stock: 50, isDefault: true },
+        ],
+      },
+      {
+        name: 'Choco Bar',
+        shortDescription: 'Vanilla ice cream bar coated in a crisp chocolate shell.',
+        description:
+          'A block of vanilla ice cream on a stick, dipped in a chocolate coating that snaps cleanly on the first bite. A lunchbox and freezer-drawer staple.',
+        tags: ['ice cream', 'choco bar', 'kids', 'frozen', 'stick'],
+        attributes: { Format: 'Stick bar', Coating: 'Chocolate shell', 'Pack size': '4 bars' },
+        popularity: 36,
+        seasonality: 1.8,
+        image: img('photo-1601050690597-df0568f70950'),
+        variants: [
+          { name: 'Pack of 4', price: 140, mrp: 160, unit: 'pack', packSize: '4 x 60 ml', weightGram: 240, stock: 85, isDefault: true },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Health & Nutrition',
+    description: 'Protein-forward and functional dairy for daily nutrition goals.',
+    image: img('photo-1600718374662-0483d2b9da44'),
+    products: [
+      {
+        name: 'High-Protein Milk',
+        shortDescription: 'Regular milk fortified to 2x the usual protein content.',
+        description:
+          'Toned milk with added milk protein isolate, doubling the protein of our regular milk without any added sugar or flavouring. Built for anyone tracking protein intake who would rather drink it than mix a shake.',
+        tags: ['milk', 'protein', 'fitness', 'nutrition'],
+        attributes: { Protein: '12 g per 250 ml (2x regular)', 'Added sugar': 'None', 'Fat content': '2.5%' },
+        isFeatured: true,
+        popularity: 34,
+        image: img('photo-1550583724-b2692b85b150'),
+        variants: [
+          { name: '250 ml bottle', price: 42, mrp: 48, unit: 'bottle', packSize: '250 ml', weightGram: 250, stock: 90, isDefault: true },
+          { name: '1 L bottle', price: 155, mrp: 175, unit: 'bottle', packSize: '1 L', weightGram: 1000, stock: 50 },
+        ],
+      },
+      {
+        name: 'Probiotic Immunity Shots',
+        shortDescription: 'Concentrated turmeric-ginger probiotic curd shots.',
+        description:
+          'A 60 ml shot of live-culture curd blended with turmeric, ginger and black pepper for absorption. Meant to be taken in one go, not sipped -- a functional add-on rather than a snack.',
+        tags: ['probiotic', 'immunity', 'turmeric', 'shot', 'functional'],
+        attributes: { Format: '60 ml shot', 'Active ingredients': 'Turmeric, ginger, live culture', 'Pack size': '6 shots' },
+        popularity: 22,
+        seasonality: 1.1,
+        image: img('photo-1571212515416-fef01fc43637'),
+        variants: [
+          { name: 'Pack of 6', price: 210, mrp: 240, unit: 'pack', packSize: '6 x 60 ml', weightGram: 360, stock: 55, isDefault: true },
+        ],
+      },
+      {
+        name: 'Low-Fat Paneer',
+        shortDescription: 'Paneer made from toned milk, roughly half the fat.',
+        description:
+          'The same fresh-set process as our regular paneer, but starting from toned rather than full-cream milk -- roughly half the fat per 100 g, without turning rubbery when cooked.',
+        tags: ['paneer', 'low fat', 'protein', 'fitness'],
+        attributes: { 'Fat content': '9 g per 100 g (regular: 18 g)', Protein: '19 g per 100 g', 'Milk type': 'Toned milk' },
+        popularity: 26,
+        image: img('photo-1631452180519-c014fe946bc7'),
+        variants: [
+          { name: '200 g block', price: 85, mrp: 96, unit: 'block', packSize: '200 g', weightGram: 200, stock: 70, isDefault: true },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Gift Packs & Combos',
+    description: 'Curated hampers for festivals, gifting and stocking up in one order.',
+    image: img('photo-1605291535126-e1a95ee2b1a3'),
+    products: [
+      {
+        name: 'Festive Sweets Hamper',
+        shortDescription: 'An assorted box of our five most-gifted sweets.',
+        description:
+          'A gift box combining Mysore Pak, Kesar Peda, Gulab Jamun, Rasgulla and Kaju Katli-style pieces, packed for gifting rather than everyday eating. Comes with a printed card slot.',
+        tags: ['gift', 'combo', 'sweets', 'festive', 'hamper'],
+        attributes: { Contents: '5 assorted sweets', Packaging: 'Gift box with card slot', Occasion: 'Festive gifting' },
+        isFeatured: true,
+        popularity: 30,
+        seasonality: 0.6,
+        image: img('photo-1605291535126-e1a95ee2b1a3'),
+        variants: [
+          { name: '1 kg hamper', price: 650, mrp: 750, unit: 'box', packSize: '1 kg', weightGram: 1000, stock: 30, isDefault: true },
+        ],
+      },
+      {
+        name: 'Weekly Dairy Essentials Combo',
+        shortDescription: 'Milk, curd, paneer and butter bundled for the week.',
+        description:
+          'A bundled combo covering the four items most households reorder every week -- 7 L milk, 1 kg curd, 500 g paneer and one 100 g butter block -- at a small discount over buying each separately.',
+        tags: ['combo', 'weekly', 'essentials', 'bundle', 'value'],
+        attributes: { Contents: 'Milk 7L, Curd 1kg, Paneer 500g, Butter 100g', 'Best for': 'Weekly household restock' },
+        popularity: 38,
+        image: img('photo-1550583724-b2692b85b150'),
+        variants: [
+          { name: 'Weekly combo box', price: 540, mrp: 610, unit: 'box', packSize: 'Mixed', stock: 40, isDefault: true },
+        ],
+      },
+      {
+        name: 'New Parent Nutrition Box',
+        shortDescription: 'Gentle, easy-to-digest dairy picks for new mothers.',
+        description:
+          'A curated box of A2 milk, plain curd, paneer and ghee -- picked for being gentle, high in protein and easy to fit into a new parent\'s routine without needing to shop for each item separately.',
+        tags: ['gift', 'combo', 'nutrition', 'new parent', 'hamper'],
+        attributes: { Contents: 'A2 milk, curd, paneer, ghee', 'Curated for': 'New mothers / postnatal nutrition' },
+        popularity: 16,
+        image: img('photo-1628088062854-d1870b4553da'),
+        variants: [
+          { name: 'Nutrition box', price: 780, mrp: 880, unit: 'box', packSize: 'Mixed', stock: 20, isDefault: true },
         ],
       },
     ],

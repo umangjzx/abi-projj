@@ -103,10 +103,11 @@ sequenceDiagram
 
 ### Admin Panel
 - Real-time dashboard (revenue, orders, customers, AOV, inventory alerts)
-- **Market Analysis**: sales trend, seasonal index, order heat map (weekday × hour), category performance, customer growth/retention/segments, top customers, revenue by city, payment mix, and a **statistical sales forecast** (linear regression + day-of-week seasonality with confidence bands)
+- **Market Analysis**: sales trend, seasonal index, order heat map (weekday × hour), category performance, customer growth/retention/segments, **RFM scoring**, **K-Means customer clustering**, top customers, revenue by city, payment mix, and a **statistical sales forecast** (linear regression + day-of-week seasonality with confidence bands)
 - Product / category / inventory CRUD with stock ledger and low-stock alerts
+- **ABC (Pareto) inventory analysis** — classifies every SKU into A/B/C by revenue contribution, right inside the Inventory page
 - Order management with a guarded status-transition workflow
-- Customer management with RFM-style segmentation (New/Active/Loyal/At-risk/Churned)
+- Customer management with rule-based RFM segmentation (New/Active/Loyal/At-risk/Churned) *and* unsupervised K-Means clusters for comparison
 - Coupons & promotional offers management
 - **Recommendation monitoring**: impression → click → cart → purchase funnel per strategy, top product affinities, coverage stats
 - Reports: Sales / Revenue / Products / Customers / Inventory / Recommendation performance — exportable to **PDF, Excel, CSV**
@@ -118,12 +119,29 @@ sequenceDiagram
 | `POPULAR` | Recency-weighted bestsellers |
 | `TRENDING` | 14-day sales velocity vs. prior 14 days |
 | `PURCHASE_HISTORY` | Reorder prompts based on past orders |
-| `CATEGORY_AFFINITY` | Unbought products in the customer's top categories |
+| `CATEGORY_AFFINITY` | Unbought products in the customer's top categories (content-based) |
 | `FREQUENTLY_BOUGHT_TOGETHER` | Pre-computed item-to-item co-occurrence |
 | `COLLABORATIVE` | User-user cosine similarity over purchase sets |
 | `RECENTLY_VIEWED` | Category siblings of recently browsed items |
 
-All strategies are blended per placement (Home/Product/Cart/Checkout/Dashboard/Search), de-duplicated, and every suggestion carries a human-readable reason (e.g. *"You've ordered this 6 times"*).
+All strategies are blended per placement (Home/Product/Cart/Checkout/Dashboard/Search) into a genuine **hybrid recommendation system**, de-duplicated, and every suggestion carries a human-readable reason (e.g. *"You've ordered this 6 times"*).
+
+### Data science & algorithms used
+
+| Technique | Implementation |
+|---|---|
+| Collaborative filtering | User-user cosine similarity over shared purchase history (`recommendation.service.ts`) |
+| Content-based filtering | Category-affinity recommendations + TF-IDF product search (below) |
+| Hybrid recommendation system | Weighted blend of all 7 strategies above, per placement |
+| RFM analysis (Recency, Frequency, Monetary) | Quintile-scored 1–5 per dimension, combined into a 3–15 score and named segment (`customer-intelligence.service.ts`) |
+| K-Means clustering | Custom Lloyd's-algorithm implementation with k-means++ seeding over min-max-scaled RFM features (`lib/kmeans.ts`) |
+| Time series / trend analysis | Linear-regression sales forecast with day-of-week seasonality and confidence bands; 14-day trending velocity; monthly seasonal index |
+| Top-N ranking | Best-sellers, top customers, top affinities, top converting products |
+| ABC (Pareto) inventory analysis | SKUs ranked by revenue, classified A/B/C at 80%/95% cumulative share (`abc.service.ts`) |
+| TF-IDF + cosine similarity search | Product search ranked by term-frequency/inverse-document-frequency over name/description/tags, not plain substring match (`lib/tfidf.ts`) |
+| BCrypt password hashing | `bcryptjs`, used for every stored password |
+
+
 
 ---
 
@@ -244,7 +262,7 @@ npm run db:setup
 ```
 
 This runs `prisma migrate deploy` followed by the seed script, producing:
-23 products, 18 customers, ~160+ orders across 12 months, reviews, coupons, offers, and recommendation telemetry — everything the dashboards need to show real numbers on first login.
+**9 categories, 51 products, 92 variants**, 18 customers, ~160+ orders across 12 months, reviews, coupons, offers, and recommendation telemetry — everything the dashboards, ABC analysis and RFM/K-Means clustering need to show real numbers on first login.
 
 ### 5. Start both servers
 
@@ -336,7 +354,7 @@ Base URL: `/api/v1`
 | `/recommendations` | Personalized feed, home rails, telemetry, admin monitoring |
 | `/inventory` *(admin)* | Stock levels, adjustments, movement ledger |
 | `/customers` *(admin)* | Customer list, detail, segmentation |
-| `/analytics` *(admin)* | Dashboard KPIs, sales/product/customer analytics, forecast |
+| `/analytics` *(admin)* | Dashboard KPIs, sales/product/customer analytics, forecast, ABC inventory analysis (`/analytics/inventory/abc`), RFM scoring (`/analytics/customers/rfm`), K-Means clustering (`/analytics/customers/clusters`) |
 | `/reports` *(admin)* | Sales/Revenue/Product/Customer/Inventory/Recommendation reports (PDF/Excel/CSV) |
 | `/admin` *(admin)* | Activity/audit log, runtime settings |
 | `/uploads` *(admin)* | Image upload (Cloudinary or local disk) |
@@ -365,24 +383,40 @@ For manual/E2E verification, sign in with the demo credentials above and walk th
 
 ## ☁️ Deployment
 
+This repo ships with ready-to-use deployment configs — **[render.yaml](render.yaml)** (Blueprint for the API + a free managed Postgres) and **[client/vercel.json](client/vercel.json)** (SPA rewrites for the frontend). Free-tier options for all three pieces:
+
+| Piece | Where | Free tier notes |
+|---|---|---|
+| Frontend | **Vercel** | Unlimited hobby tier, deploys from GitHub automatically |
+| Backend API | **Render** | 750 free hrs/month; sleeps after 15 min idle (first request after a nap takes ~30–50s to wake) |
+| Database | **Neon** or Render's free Postgres | Neon's free tier has no expiry; Render's free Postgres auto-deletes after 90 days |
+
+### Backend → Render (Blueprint, recommended)
+1. In the Render dashboard: **New +** → **Blueprint** → point at this GitHub repo. Render reads [render.yaml](render.yaml) and provisions the web service + database together, generating `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` automatically.
+2. Once live, open a shell on the service (or run locally against the Render `DATABASE_URL`) and run `npm run db:seed` once to load the demo dataset — migrations already ran automatically as part of the start command.
+3. After the frontend is deployed (below), come back and set `CORS_ORIGINS` and `CLIENT_URL` to your Vercel domain, then redeploy.
+
+<details>
+<summary>Manual setup (Render, Railway, or any other host)</summary>
+
+1. Create a new **Web Service** pointing at the `server/` directory.
+2. Build command: `npm install && npm run build`
+3. Start command: `npx prisma migrate deploy && npm start`
+4. Add all variables from [`server/.env.example`](server/.env.example) (use a strong, freshly generated `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`).
+5. Provision a managed PostgreSQL instance and set `DATABASE_URL`.
+6. Run `npm run db:seed` once (via a one-off job/shell) to load demo data.
+7. Set `CORS_ORIGINS` and `CLIENT_URL` to your frontend domain.
+</details>
+
 ### Frontend → Vercel
 ```bash
 cd client
 vercel
 ```
-Set the environment variable `VITE_API_URL` to your deployed API's base URL (e.g. `https://your-api.onrender.com/api/v1`).
-
-### Backend → Render / Railway
-1. Create a new **Web Service** pointing at the `server/` directory.
-2. Build command: `npm install && npm run build`
-3. Start command: `npm start`
-4. Add all variables from `server/.env.example` (use a strong, freshly generated `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`).
-5. Provision a managed PostgreSQL instance and set `DATABASE_URL`.
-6. Run `npm run db:setup` once (via a one-off job/shell) to migrate and seed.
-7. Set `CORS_ORIGINS` and `CLIENT_URL` to your Vercel domain.
+`vercel.json` is already configured with the SPA rewrite Vite apps need for client-side routing. Set the environment variable `VITE_API_URL` (see [`client/.env.example`](client/.env.example)) in the Vercel project settings to your deployed API's base URL, e.g. `https://thuthi-dairy-api.onrender.com/api/v1`.
 
 ### Database
-Any managed PostgreSQL works (Render Postgres, Railway, Neon, Supabase). Just point `DATABASE_URL` at it and run migrations.
+Any managed PostgreSQL works (Render Postgres, Neon, Railway, Supabase). Just point `DATABASE_URL` at it and run `npx prisma migrate deploy`.
 
 ---
 

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { analyticsService } from './analytics.service';
 import { dashboardService } from './dashboard.service';
+import { abcService } from './abc.service';
+import { customerIntelligenceService } from './customer-intelligence.service';
 import { parseRange } from './range';
 import { asyncHandler, ok } from '../../lib/http';
 import { requireAuth } from '../../middleware/auth';
@@ -102,6 +104,29 @@ analyticsRouter.get(
   '/snapshots',
   validate({ query: rangeQuery.extend({ metric: z.string().optional() }) }),
   withRange((range, req) => analyticsService.snapshots(range, req.query.metric as string | undefined)),
+);
+
+// -------------------------------------------------------------- ABC & RFM ---
+
+analyticsRouter.get(
+  '/inventory/abc',
+  validate({
+    query: rangeQuery.extend({
+      classA: z.coerce.number().min(1).max(99).optional().default(80),
+      classB: z.coerce.number().min(1).max(100).optional().default(95),
+    }),
+  }),
+  withRange((range, req) =>
+    abcService.classify(range, { classA: Number(req.query.classA), classB: Number(req.query.classB) }),
+  ),
+);
+
+analyticsRouter.get('/customers/rfm', asyncHandler(async (_req, res) => ok(res, await customerIntelligenceService.rfm())));
+
+analyticsRouter.get(
+  '/customers/clusters',
+  validate({ query: z.object({ k: z.coerce.number().int().min(2).max(8).optional().default(4) }) }),
+  asyncHandler(async (req, res) => ok(res, await customerIntelligenceService.cluster(Number(req.query.k)))),
 );
 
 /** Manual roll-up trigger, useful right after seeding. */

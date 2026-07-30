@@ -28,8 +28,10 @@ import { DateRangePicker, type RangePeriod } from '@/components/admin/DateRangeP
 import { Heatmap } from '@/components/admin/charts/Heatmap';
 import {
   useCategoryPerformance,
+  useCustomerClusters,
   useCustomerGrowth,
   useCustomerLocations,
+  useCustomerRfm,
   useCustomerSegments,
   useForecast,
   useOrderHeatmap,
@@ -42,6 +44,7 @@ import {
   useSeasonalTrends,
   useTopCustomers,
 } from '@/hooks/useAdmin';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function MarketAnalysisPage() {
   const [period, setPeriod] = React.useState<RangePeriod>('30d');
@@ -370,6 +373,124 @@ function CustomersTab({ period }: { period: RangePeriod }) {
           )}
         </div>
       </div>
+
+      <CustomerClusteringPanel />
+      <CustomerRfmTable />
+    </div>
+  );
+}
+
+/**
+ * K-Means clustering over min-max-scaled Recency/Frequency/Monetary features.
+ * Unlike the rule-based segments above (fixed thresholds), the groups here
+ * are discovered from the actual distribution of this store's customers --
+ * each cluster is labelled from its centroid so the result stays readable.
+ */
+function CustomerClusteringPanel() {
+  const { data, isLoading, error, refetch } = useCustomerClusters(4);
+
+  return (
+    <ChartCard
+      title="Customer clustering (K-Means)"
+      description="Groups discovered from Recency, Frequency & Monetary behaviour — not fixed thresholds"
+      isLoading={isLoading}
+      isEmpty={!error && data?.clusters.length === 0}
+      height={220}
+    >
+      {error ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {data?.clusters.map((cluster) => (
+            <div key={cluster.clusterIndex} className="rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold">{cluster.label}</p>
+                <Badge variant="outline" size="sm">
+                  {cluster.size} customer{cluster.size === 1 ? '' : 's'}
+                </Badge>
+              </div>
+              <dl className="mt-3 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Avg. recency</dt>
+                  <dd className="font-medium">{cluster.avgRecencyDays}d</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Avg. orders</dt>
+                  <dd className="font-medium">{cluster.avgFrequency}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Avg. spend</dt>
+                  <dd className="font-medium">{formatCurrency(cluster.avgMonetary)}</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+        </div>
+      )}
+    </ChartCard>
+  );
+}
+
+/** Recency/Frequency/Monetary quintile scoring (1-5 each) and the resulting named segment. */
+function CustomerRfmTable() {
+  const { data, isLoading, error, refetch } = useCustomerRfm();
+  const top = React.useMemo(() => [...(data ?? [])].sort((a, b) => b.rfmScore - a.rfmScore).slice(0, 12), [data]);
+
+  return (
+    <div className="rounded-xl border border-border bg-card shadow-soft">
+      <div className="border-b border-border p-5">
+        <h3 className="font-display text-sm font-bold">RFM scoring</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Recency, Frequency and Monetary value quintile-scored 1 (worst) – 5 (best), top 12 by combined score
+        </p>
+      </div>
+      {error ? (
+        <div className="p-5">
+          <ErrorState error={error} onRetry={() => refetch()} />
+        </div>
+      ) : isLoading ? (
+        <div className="p-5">
+          <StatCardSkeleton />
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Customer</TableHead>
+              <TableHead>Recency</TableHead>
+              <TableHead>Frequency</TableHead>
+              <TableHead>Monetary</TableHead>
+              <TableHead>RFM score</TableHead>
+              <TableHead>Segment</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {top.map((row) => (
+              <TableRow key={row.userId}>
+                <TableCell>
+                  <p className="text-sm font-medium">{row.name}</p>
+                  <p className="text-xs text-muted-foreground">{row.email}</p>
+                </TableCell>
+                <TableCell>
+                  {row.recencyScore}/5 <span className="text-xs text-muted-foreground">({row.recencyDays}d)</span>
+                </TableCell>
+                <TableCell>
+                  {row.frequencyScore}/5 <span className="text-xs text-muted-foreground">({row.frequency})</span>
+                </TableCell>
+                <TableCell>
+                  {row.monetaryScore}/5 <span className="text-xs text-muted-foreground">({formatCurrency(row.monetary)})</span>
+                </TableCell>
+                <TableCell className="font-semibold">{row.rfmScore}/15</TableCell>
+                <TableCell>
+                  <Badge variant="outline" size="sm">
+                    {row.segment}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </div>
   );
 }

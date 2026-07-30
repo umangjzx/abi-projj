@@ -266,6 +266,24 @@ interface SeededProduct {
 async function seedCatalogue(): Promise<SeededProduct[]> {
   const products: SeededProduct[] = [];
   let categoryOrder = 0;
+  // `sku()` truncates to 6 chars per part, so two products sharing a name
+  // prefix (e.g. "Paneer Tikka..." / "Paneer Yoghurt...") collide on the
+  // unique constraint. Track what has been issued this run and disambiguate
+  // with a numeric suffix rather than letting the catalogue's word choices
+  // dictate SKU uniqueness.
+  const usedProductSkus = new Set<string>();
+
+  const uniqueSku = (base: string): string => {
+    if (!usedProductSkus.has(base)) {
+      usedProductSkus.add(base);
+      return base;
+    }
+    let n = 2;
+    while (usedProductSkus.has(`${base}-${n}`)) n++;
+    const candidate = `${base}-${n}`;
+    usedProductSkus.add(candidate);
+    return candidate;
+  };
 
   for (const categorySeed of CATEGORIES) {
     const category = await prisma.category.create({
@@ -283,7 +301,7 @@ async function seedCatalogue(): Promise<SeededProduct[]> {
         data: {
           name: productSeed.name,
           slug: slugify(productSeed.name),
-          sku: sku(productSeed.name, 'TD'),
+          sku: uniqueSku(sku(productSeed.name, 'TD')),
           shortDescription: productSeed.shortDescription,
           description: productSeed.description,
           categoryId: category.id,

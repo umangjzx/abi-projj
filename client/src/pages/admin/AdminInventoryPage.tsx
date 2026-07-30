@@ -2,17 +2,18 @@ import * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Boxes, Package, Search, Settings2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/primitives';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/primitives';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState, ErrorState, StatCardSkeleton, TableSkeleton } from '@/components/ui/feedback';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Pagination } from '@/components/ui/table';
 import { StatCard } from '@/components/admin/StatCard';
+import { DateRangePicker, type RangePeriod } from '@/components/admin/DateRangePicker';
 import { ProductImage } from '@/components/product/ProductImage';
-import { useAdminInventory, useInventorySummary } from '@/hooks/useAdmin';
+import { useAbcAnalysis, useAdminInventory, useInventorySummary } from '@/hooks/useAdmin';
 import { api, ApiError } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import type { InventoryRow } from '@/types';
@@ -89,6 +90,13 @@ export default function AdminInventoryPage() {
         )}
       </div>
 
+      <Tabs defaultValue="stock">
+        <TabsList>
+          <TabsTrigger value="stock">Stock levels</TabsTrigger>
+          <TabsTrigger value="abc">ABC analysis</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="stock" className="space-y-6">
       <div className="flex flex-wrap gap-3">
         <Input icon={<Search />} placeholder="Search SKU, product…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
         <Select
@@ -176,6 +184,12 @@ export default function AdminInventoryPage() {
           </div>
         )}
       </div>
+        </TabsContent>
+
+        <TabsContent value="abc">
+          <AbcAnalysisPanel />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={Boolean(adjustTarget)} onOpenChange={(open) => !open && setAdjustTarget(null)}>
         <DialogContent>
@@ -218,6 +232,91 @@ export default function AdminInventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Pareto (ABC) classification: ranks every SKU by revenue contribution and
+ * buckets it into A (top ~80% of revenue), B (next ~15%) or C (long tail).
+ * Class A is where tight stock control actually matters -- a stockout there
+ * costs real revenue, while a Class C stockout barely registers.
+ */
+function AbcAnalysisPanel() {
+  const [period, setPeriod] = React.useState<RangePeriod>('90d');
+  const { data, isLoading, error, refetch } = useAbcAnalysis(period);
+
+  const classBadge = { A: 'success', B: 'warning', C: 'muted' } as const;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          SKUs ranked by revenue contribution — Class A drives the bulk of revenue and deserves the tightest stock control.
+        </p>
+        <DateRangePicker value={period} onChange={setPeriod} />
+      </div>
+
+      {error ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
+        <TableSkeleton rows={8} cols={5} />
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            {data.summary.map((s) => (
+              <StatCard
+                key={s.class}
+                label={`Class ${s.class} — ${s.skuCount} SKU(s)`}
+                value={formatCurrency(s.revenue)}
+                changeLabel={`${s.revenueShare}% of revenue`}
+                className={cn(
+                  s.class === 'A' && 'border-success/40',
+                  s.class === 'B' && 'border-warning/40',
+                )}
+              />
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-border bg-card shadow-soft">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Revenue</TableHead>
+                  <TableHead>Units</TableHead>
+                  <TableHead>Stock</TableHead>
+                  <TableHead>Revenue share</TableHead>
+                  <TableHead>Cumulative</TableHead>
+                  <TableHead>Class</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.rows.map((row) => (
+                  <TableRow key={row.variantId}>
+                    <TableCell>
+                      <p className="line-clamp-1 text-sm font-medium">{row.productName}</p>
+                      <p className="text-xs text-muted-foreground">{row.variantName} · {row.category}</p>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{row.sku}</TableCell>
+                    <TableCell className="font-medium">{formatCurrency(row.revenue)}</TableCell>
+                    <TableCell>{row.unitsSold}</TableCell>
+                    <TableCell>{row.stock}</TableCell>
+                    <TableCell>{row.revenueShare}%</TableCell>
+                    <TableCell className="text-muted-foreground">{row.cumulativeShare}%</TableCell>
+                    <TableCell>
+                      <Badge variant={classBadge[row.class]} size="sm">
+                        {row.class}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

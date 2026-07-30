@@ -8,6 +8,7 @@ import { productInclude, serializeProduct } from './catalog.serializer';
 import type { ListProductQuery } from './product.schema';
 import { pageMeta, type PageParams } from '../../lib/http';
 import { deleteImage } from '../../lib/storage';
+import { buildTfidfIndex, searchTfidf, tokenize, type TfidfDocument } from '../../lib/tfidf';
 
 /** Maps the public `sort` value onto a Prisma orderBy clause. */
 function buildOrderBy(sort: ListProductQuery['sort'], hasQuery: boolean): Prisma.ProductOrderByWithRelationInput[] {
@@ -35,8 +36,76 @@ function buildOrderBy(sort: ListProductQuery['sort'], hasQuery: boolean): Prisma
 
 export const productService = {
   async list(query: ListProductQuery, page: PageParams) {
-    const where = await buildProductWhere(query);
     const priceSort = query.sort === 'price-asc' || query.sort === 'price-desc';
+
+    // A free-text query is ranked with TF-IDF rather than a database
+    // `ILIKE` scan: the whole (non-text) filtered candidate set is fetched,
+    // scored against the query in memory, and only then paginated. At a few
+    // hundred SKUs this is cheap and gives real relevance ranking -- e.g. a
+    // product whose name AND description both say "fresh milk" outranks one
+    // that only mentions "milk" once deep in an ingredients list, which a
+    // substring match cannot express.
+    if (query.q && query.q.trim()) {
+      const where = await buildProductWhere(query, { skipTextFilter: true });
+      const candidates = await prisma.product.findMany({ where, include: productInclude });
+
+      const documents: TfidfDocument[] = candidates.map((product) => ({
+        id: product.id,
+        // Repeating a field's tokens is a cheap way to weight it: the name
+        // matters far more to relevance than one line buried in the
+        // description, without needing a separate weighted-sum step.
+        tokens: [
+          ...tokenize(product.name),
+          ...tokenize(product.name),
+          ...tokenize(product.name),
+          ...tokenize(product.brand),
+          ...tokenize(product.shortDescription ?? ''),
+          ...tokenize(product.description),
+          ...product.tags.flatMap((t) => tokenize(t)),
+          ...tokenize(product.category.name),
+        ],
+      }));
+
+      const index = buildTfidfIndex(documents);
+      const ranked = searchTfidf(query.q, index);
+      const scoreById = new Map(ranked.map((r) => [r.id, r.score]));
+
+      const matched = candidates
+        .filter((product) => scoreById.has(product.id))
+        .map((product) => ({ product, score: scoreById.get(product.id)! }));
+
+      // 'relevance' (the default when searching) sorts by TF-IDF score;
+      // any other explicit sort re-orders the already-relevant subset by
+      // that criterion instead, matching how real storefront search behaves.
+      if (query.sort === 'relevance' || !query.sort) {
+        matched.sort((a, b) => b.score - a.score || b.product.soldCount - a.product.soldCount);
+      } else if (priceSort) {
+        const serialized = matched.map((m) => serializeProduct(m.product));
+        serialized.sort((a, b) => (query.sort === 'price-asc' ? a.minPrice - b.minPrice : b.minPrice - a.minPrice));
+        return { items: serialized.slice(page.skip, page.skip + page.take), meta: pageMeta(serialized.length, page) };
+      } else {
+        const collator = (a: (typeof matched)[number], b: (typeof matched)[number]) => {
+          switch (query.sort) {
+            case 'newest':
+              return b.product.createdAt.getTime() - a.product.createdAt.getTime();
+            case 'rating':
+              return b.product.avgRating - a.product.avgRating || b.product.ratingCount - a.product.ratingCount;
+            case 'popular':
+              return b.product.soldCount - a.product.soldCount || b.product.viewCount - a.product.viewCount;
+            case 'name-asc':
+              return a.product.name.localeCompare(b.product.name);
+            default:
+              return 0;
+          }
+        };
+        matched.sort(collator);
+      }
+
+      const items = matched.slice(page.skip, page.skip + page.take).map((m) => serializeProduct(m.product));
+      return { items, meta: pageMeta(matched.length, page) };
+    }
+
+    const where = await buildProductWhere(query, { skipTextFilter: false });
 
     // Price ordering cannot be expressed as a Prisma orderBy across the
     // variant relation, so for those two sorts we page in memory over the
@@ -56,7 +125,7 @@ export const productService = {
       prisma.product.findMany({
         where,
         include: productInclude,
-        orderBy: buildOrderBy(query.sort, Boolean(query.q)),
+        orderBy: buildOrderBy(query.sort, false),
         skip: page.skip,
         take: page.take,
       }),
@@ -304,14 +373,20 @@ export const productService = {
 
 // ------------------------------------------------------------------ helpers ---
 
-async function buildProductWhere(query: ListProductQuery): Promise<Prisma.ProductWhereInput> {
+async function buildProductWhere(
+  query: ListProductQuery,
+  opts: { skipTextFilter: boolean } = { skipTextFilter: false },
+): Promise<Prisma.ProductWhereInput> {
   const and: Prisma.ProductWhereInput[] = [];
 
   if (!query.includeInactive) and.push({ isActive: true });
   if (query.featured !== undefined) and.push({ isFeatured: query.featured });
 
-  if (query.q) {
-    // Case-insensitive keyword match across name, description, brand and tags.
+  // When ranking with TF-IDF (see productService.list), the text match is
+  // done in memory against the full non-text-filtered candidate set instead
+  // -- a DB substring filter here would just be redundant, and would also
+  // wrongly exclude products TF-IDF considers relevant via a SKU/tag match.
+  if (query.q && !opts.skipTextFilter) {
     and.push({
       OR: [
         { name: { contains: query.q, mode: 'insensitive' } },

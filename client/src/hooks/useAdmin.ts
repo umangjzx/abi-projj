@@ -231,3 +231,70 @@ export function useRecommendationPerformance(period: RangePeriod) {
     placeholderData: keepPreviousData,
   });
 }
+
+// ------------------------------------------------------------- ABC & RFM ---
+
+export interface AbcRow {
+  variantId: string;
+  sku: string;
+  productName: string;
+  variantName: string;
+  category: string;
+  revenue: number;
+  unitsSold: number;
+  stock: number;
+  revenueShare: number;
+  cumulativeShare: number;
+  class: 'A' | 'B' | 'C';
+}
+
+export interface AbcResult {
+  rows: AbcRow[];
+  summary: { class: 'A' | 'B' | 'C'; skuCount: number; revenue: number; revenueShare: number }[];
+}
+
+export function useAbcAnalysis(period: RangePeriod) {
+  return useQuery({
+    queryKey: ['admin', 'abc', period],
+    queryFn: () => api.get<AbcResult>(`/analytics/inventory/abc?period=${period}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export interface CustomerRfm {
+  userId: string;
+  name: string;
+  email: string;
+  recencyDays: number;
+  frequency: number;
+  monetary: number;
+  recencyScore: number;
+  frequencyScore: number;
+  monetaryScore: number;
+  rfmScore: number;
+  segment: string;
+}
+
+export function useCustomerRfm() {
+  return useQuery({
+    queryKey: ['admin', 'rfm'],
+    queryFn: () => api.get<CustomerRfm[]>('/analytics/customers/rfm'),
+  });
+}
+
+export interface CustomerCluster {
+  clusterIndex: number;
+  label: string;
+  size: number;
+  avgRecencyDays: number;
+  avgFrequency: number;
+  avgMonetary: number;
+  members: { userId: string; name: string; email: string; segment: string }[];
+}
+
+export function useCustomerClusters(k = 4) {
+  return useQuery({
+    queryKey: ['admin', 'clusters', k],
+    queryFn: () => api.get<{ k: number; inertia: number; clusters: CustomerCluster[] }>(`/analytics/customers/clusters?k=${k}`),
+  });
+}
