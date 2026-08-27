@@ -125,8 +125,11 @@ analyticsRouter.get('/customers/rfm', asyncHandler(async (_req, res) => ok(res, 
 
 analyticsRouter.get(
   '/customers/clusters',
-  validate({ query: z.object({ k: z.coerce.number().int().min(2).max(8).optional().default(4) }) }),
-  asyncHandler(async (req, res) => ok(res, await customerIntelligenceService.cluster(Number(req.query.k)))),
+  // No `k` => the service picks it by silhouette score over k = 2..6.
+  validate({ query: z.object({ k: z.coerce.number().int().min(2).max(8).optional() }) }),
+  asyncHandler(async (req, res) =>
+    ok(res, await customerIntelligenceService.cluster(req.query.k ? Number(req.query.k) : undefined)),
+  ),
 );
 
 /** Manual roll-up trigger, useful right after seeding. */

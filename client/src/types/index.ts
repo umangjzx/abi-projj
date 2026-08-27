@@ -497,6 +497,9 @@ export interface Forecast {
     rSquared: number;
     confidence: 'high' | 'moderate' | 'low';
     observations: number;
+    mape?: number;
+    seasonality?: string;
+    comparedModels?: { method: string; mape: number | null }[];
   } | null;
   summary?: {
     projectedRevenue: number;

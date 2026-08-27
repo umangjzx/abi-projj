@@ -766,7 +766,8 @@ model ProductAffinity {
   productAId   String
   productBId   String
   coOccurrence Int      @default(0)
-  /// Lift / confidence style score in [0, 1].
+  /// Association strength as *lift* = P(A∩B) / (P(A)·P(B)). 1 = independent
+  /// (co-occur only by chance), >1 = genuine "bought together", <1 = repel.
   score        Float    @default(0)
   computedAt   DateTime @default(now())
 

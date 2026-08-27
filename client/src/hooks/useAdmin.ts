@@ -234,6 +234,9 @@ export function useRecommendationPerformance(period: RangePeriod) {
 
 // ------------------------------------------------------------- ABC & RFM ---
 
+export type AbcClass = 'A' | 'B' | 'C';
+export type XyzClass = 'X' | 'Y' | 'Z';
+
 export interface AbcRow {
   variantId: string;
   sku: string;
@@ -245,12 +248,17 @@ export interface AbcRow {
   stock: number;
   revenueShare: number;
   cumulativeShare: number;
-  class: 'A' | 'B' | 'C';
+  class: AbcClass;
+  demandCv: number;
+  xyzClass: XyzClass;
+  combinedClass: `${AbcClass}${XyzClass}`;
 }
 
 export interface AbcResult {
   rows: AbcRow[];
-  summary: { class: 'A' | 'B' | 'C'; skuCount: number; revenue: number; revenueShare: number }[];
+  summary: { class: AbcClass; skuCount: number; revenue: number; revenueShare: number }[];
+  xyzSummary: { class: XyzClass; skuCount: number; revenue: number }[];
+  matrix: { cell: `${AbcClass}${XyzClass}`; skuCount: number; revenue: number }[];
 }
 
 export function useAbcAnalysis(period: RangePeriod) {
@@ -292,9 +300,20 @@ export interface CustomerCluster {
   members: { userId: string; name: string; email: string; segment: string }[];
 }
 
-export function useCustomerClusters(k = 4) {
+export interface CustomerClusterResult {
+  k: number;
+  kSelection?: string;
+  silhouette?: number;
+  inertia: number;
+  elbow?: { k: number; inertia: number; silhouette: number }[];
+  clusters: CustomerCluster[];
+}
+
+/** Pass a `k` to force it; omit to let the server pick k by silhouette score. */
+export function useCustomerClusters(k?: number) {
   return useQuery({
-    queryKey: ['admin', 'clusters', k],
-    queryFn: () => api.get<{ k: number; inertia: number; clusters: CustomerCluster[] }>(`/analytics/customers/clusters?k=${k}`),
+    queryKey: ['admin', 'clusters', k ?? 'auto'],
+    queryFn: () =>
+      api.get<CustomerClusterResult>(`/analytics/customers/clusters${k ? `?k=${k}` : ''}`),
   });
 }

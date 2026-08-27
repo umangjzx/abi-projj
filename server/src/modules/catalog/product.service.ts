@@ -8,7 +8,7 @@ import { productInclude, serializeProduct } from './catalog.serializer';
 import type { ListProductQuery } from './product.schema';
 import { pageMeta, type PageParams } from '../../lib/http';
 import { deleteImage } from '../../lib/storage';
-import { buildTfidfIndex, searchTfidf, tokenize, type TfidfDocument } from '../../lib/tfidf';
+import { buildTfidfIndex, searchTfidf, fuzzyMatch, tokenize, type TfidfDocument } from '../../lib/tfidf';
 
 /** Maps the public `sort` value onto a Prisma orderBy clause. */
 function buildOrderBy(sort: ListProductQuery['sort'], hasQuery: boolean): Prisma.ProductOrderByWithRelationInput[] {
@@ -67,7 +67,11 @@ export const productService = {
       }));
 
       const index = buildTfidfIndex(documents);
-      const ranked = searchTfidf(query.q, index);
+      // BM25 first; if nothing matches lexically (usually a typo), fall back to
+      // trigram fuzzy matching so "chesse" still finds "cheese" instead of
+      // returning an empty page.
+      let ranked = searchTfidf(query.q, index);
+      if (ranked.length === 0) ranked = fuzzyMatch(query.q, index);
       const scoreById = new Map(ranked.map((r) => [r.id, r.score]));
 
       const matched = candidates

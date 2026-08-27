@@ -20,7 +20,7 @@ interface AffinityRow {
   productA: string;
   productB: string;
   coOccurrence: number;
-  score: number;
+  lift: number;
 }
 
 interface CoverageStats {
@@ -169,7 +169,10 @@ export default function AdminRecommendationsPage() {
       <div className="rounded-xl border border-border bg-card shadow-soft">
         <div className="border-b border-border p-5">
           <h2 className="font-display text-sm font-bold">Strongest product affinities</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Pairs frequently bought together — powers the "frequently bought together" widget</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Ranked by <strong>lift</strong> — how many times more often the pair is bought together than their
+            individual popularity predicts. Lift 1.0 = coincidence; only pairs above 1.0 power the widget.
+          </p>
         </div>
         {affinitiesLoading ? (
           <div className="p-5">
@@ -182,7 +185,7 @@ export default function AdminRecommendationsPage() {
                 <TableHead>Product A</TableHead>
                 <TableHead>Product B</TableHead>
                 <TableHead>Co-occurrence</TableHead>
-                <TableHead>Score</TableHead>
+                <TableHead>Lift</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -191,7 +194,7 @@ export default function AdminRecommendationsPage() {
                   <TableCell>{row.productA}</TableCell>
                   <TableCell>{row.productB}</TableCell>
                   <TableCell>{row.coOccurrence}</TableCell>
-                  <TableCell className="font-semibold">{(row.score * 100).toFixed(0)}%</TableCell>
+                  <TableCell className="font-semibold">{row.lift.toFixed(2)}×</TableCell>
                 </TableRow>
               ))}
             </TableBody>

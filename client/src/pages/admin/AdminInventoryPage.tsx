@@ -237,16 +237,18 @@ export default function AdminInventoryPage() {
 }
 
 /**
- * Pareto (ABC) classification: ranks every SKU by revenue contribution and
- * buckets it into A (top ~80% of revenue), B (next ~15%) or C (long tail).
- * Class A is where tight stock control actually matters -- a stockout there
- * costs real revenue, while a Class C stockout barely registers.
+ * Pareto (ABC) + XYZ classification. ABC buckets each SKU by revenue
+ * contribution — A (top ~80% of revenue), B (next ~15%), C (long tail). XYZ
+ * buckets it by how predictable its weekly demand is — X (steady, CV ≤ 0.5),
+ * Y (variable), Z (erratic, CV > 1). The 3×3 grid turns the two into stock
+ * policy: AX = run lean, AZ = carry safety stock, CZ = make-to-order or delist.
  */
 function AbcAnalysisPanel() {
   const [period, setPeriod] = React.useState<RangePeriod>('90d');
   const { data, isLoading, error, refetch } = useAbcAnalysis(period);
 
   const classBadge = { A: 'success', B: 'warning', C: 'muted' } as const;
+  const xyzBadge = { X: 'success', Y: 'warning', Z: 'muted' } as const;
 
   return (
     <div className="space-y-6">
@@ -278,6 +280,42 @@ function AbcAnalysisPanel() {
             ))}
           </div>
 
+          <div className="rounded-xl border border-border bg-card p-5 shadow-soft">
+            <p className="text-sm font-semibold">ABC × XYZ matrix</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              SKU count (revenue) per cell — value down, demand predictability across.
+            </p>
+            <div className="mt-3 grid grid-cols-[auto_repeat(3,1fr)] gap-1 text-center text-xs">
+              <div />
+              {(['X', 'Y', 'Z'] as const).map((x) => (
+                <div key={x} className="py-1 font-semibold text-muted-foreground">
+                  {x} {x === 'X' ? '· steady' : x === 'Y' ? '· variable' : '· erratic'}
+                </div>
+              ))}
+              {(['A', 'B', 'C'] as const).map((a) => (
+                <React.Fragment key={a}>
+                  <div className="flex items-center justify-center py-1 font-semibold text-muted-foreground">{a}</div>
+                  {(['X', 'Y', 'Z'] as const).map((x) => {
+                    const cell = data.matrix.find((m) => m.cell === `${a}${x}`);
+                    return (
+                      <div
+                        key={x}
+                        className={cn(
+                          'rounded-md border border-border px-2 py-2',
+                          a === 'A' && x === 'Z' && 'border-warning/50 bg-warning/5',
+                          a === 'A' && x === 'X' && 'border-success/50 bg-success/5',
+                        )}
+                      >
+                        <span className="font-semibold">{cell?.skuCount ?? 0}</span>
+                        <span className="block text-[10px] text-muted-foreground">{formatCurrency(cell?.revenue ?? 0)}</span>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
           <div className="rounded-xl border border-border bg-card shadow-soft">
             <Table>
               <TableHeader>
@@ -289,6 +327,7 @@ function AbcAnalysisPanel() {
                   <TableHead>Stock</TableHead>
                   <TableHead>Revenue share</TableHead>
                   <TableHead>Cumulative</TableHead>
+                  <TableHead>Demand CV</TableHead>
                   <TableHead>Class</TableHead>
                 </TableRow>
               </TableHeader>
@@ -305,10 +344,16 @@ function AbcAnalysisPanel() {
                     <TableCell>{row.stock}</TableCell>
                     <TableCell>{row.revenueShare}%</TableCell>
                     <TableCell className="text-muted-foreground">{row.cumulativeShare}%</TableCell>
+                    <TableCell className="text-muted-foreground">{row.demandCv.toFixed(2)}</TableCell>
                     <TableCell>
-                      <Badge variant={classBadge[row.class]} size="sm">
-                        {row.class}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant={classBadge[row.class]} size="sm">
+                          {row.class}
+                        </Badge>
+                        <Badge variant={xyzBadge[row.xyzClass]} size="sm">
+                          {row.xyzClass}
+                        </Badge>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

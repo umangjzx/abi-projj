@@ -474,6 +474,8 @@ async function seedOrders(
   const couponUsage = new Map<string, number>();
   const perDaySequence = new Map<string, number>();
 
+  const productById = new Map(products.map((p) => [p.id, p]));
+
   // Popularity-weighted pool so bestsellers really do sell more.
   const weightedPool: SeededProduct[] = [];
   for (const product of products) {
@@ -488,6 +490,21 @@ async function seedOrders(
     const maxDaysAgo = Math.min(MONTHS_OF_HISTORY * 30, Math.floor((Date.now() - customer.joinedAt.getTime()) / DAY_MS));
     if (maxDaysAgo < 1) continue;
 
+    // ---- this customer's staples ----
+    // Real shoppers return to a handful of products and a couple of categories.
+    // Without that, every basket is just an independent draw from global
+    // popularity, so "recommend the bestsellers" is unbeatable and none of the
+    // personalised signals (purchase history, collaborative, category affinity)
+    // have anything to learn. Favourites are themselves popularity-seeded, so
+    // bestsellers still dominate overall -- individuals just become consistent.
+    const favouriteIds = new Set<string>();
+    while (favouriteIds.size < randInt(3, 5)) favouriteIds.add(pickSeasonal(weightedPool, new Date()).id);
+    const favouriteCategories = new Set([...favouriteIds].map((id) => productById.get(id)!.categoryName));
+
+    const personalPool: SeededProduct[] = [];
+    for (const id of favouriteIds) for (let i = 0; i < 6; i++) personalPool.push(productById.get(id)!);
+    for (const product of products) if (favouriteCategories.has(product.categoryName)) personalPool.push(product);
+
     for (let i = 0; i < orderCount; i++) {
       // recencyBias skews churned customers' orders towards the far past.
       const skew = Math.pow(random(), 1 / Math.max(0.15, profile.recencyBias));
@@ -498,7 +515,8 @@ async function seedOrders(
       const basketSize = randInt(profile.basketSize[0], profile.basketSize[1]);
       const chosen = new Map<string, SeededProduct>();
 
-      const anchor = pickSeasonal(weightedPool, placedAt);
+      // Anchor on a personal staple ~65% of the time, otherwise a global pick.
+      const anchor = pickSeasonal(chance(0.65) ? personalPool : weightedPool, placedAt);
       chosen.set(anchor.id, anchor);
 
       // Pull in a genuine companion product ~55% of the time.
@@ -511,7 +529,7 @@ async function seedOrders(
       }
 
       while (chosen.size < basketSize) {
-        const candidate = pickSeasonal(weightedPool, placedAt);
+        const candidate = pickSeasonal(chance(0.5) ? personalPool : weightedPool, placedAt);
         chosen.set(candidate.id, candidate);
         if (chosen.size > 8) break;
       }
@@ -904,16 +922,20 @@ async function seedAffinities() {
     }
   }
 
+  const totalBaskets = orders.length || 1;
   const rows = [...pairCounts.entries()]
     .filter(([, count]) => count >= 2)
     .map(([key, coOccurrence]) => {
       const [productAId, productBId] = key.split('|');
-      const denominator = Math.max(1, Math.min(productCounts.get(productAId) ?? 1, productCounts.get(productBId) ?? 1));
-      return { productAId, productBId, coOccurrence, score: Math.min(1, coOccurrence / denominator) };
+      const countA = productCounts.get(productAId) ?? 1;
+      const countB = productCounts.get(productBId) ?? 1;
+      // lift = P(A∩B) / (P(A)·P(B)) -- see recommendationService.frequentlyBoughtTogether
+      const score = (coOccurrence * totalBaskets) / (countA * countB);
+      return { productAId, productBId, coOccurrence, score };
     });
 
   if (rows.length) await prisma.productAffinity.createMany({ data: rows, skipDuplicates: true });
-  console.log(`  ✓ ${rows.length} product affinity pairs`);
+  console.log(`  ✓ ${rows.length} product affinity pairs (${rows.filter((r) => r.score > 1).length} with lift > 1)`);
 }
 
 /**

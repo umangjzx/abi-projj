@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { pctChange, round2, toNumber } from '../../lib/money';
 import { REVENUE_STATUSES } from '../orders/order.service';
 import { fillSeries, granularityFor, toISODate, type DateRange } from './range';
+import { fitHoltWinters, forecastHoltWinters } from '../../lib/holt-winters';
 
 /**
  * Market analysis engine. Every figure the admin dashboard shows is produced
@@ -536,12 +537,20 @@ export const analyticsService = {
   // ----------------------------------------------------------------- forecast ---
 
   /**
-   * Sales forecast. Ordinary least-squares trend line over daily revenue,
-   * multiplied by a day-of-week seasonality index derived from the same window.
+   * Sales forecast. Two transparent statistical models are fitted to the daily
+   * revenue history and the one with the lower in-sample error (MAPE) is used:
    *
-   * This is intentionally a transparent statistical model rather than a black
-   * box: R-squared is returned alongside the numbers so the admin can see how
-   * much to trust it, and the confidence band widens with the residual spread.
+   *   1. Ordinary least-squares linear trend x day-of-week seasonality index.
+   *      Good when the trend really is a straight line over the window.
+   *   2. Holt-Winters additive triple exponential smoothing (level + trend +
+   *      weekly season). Tracks a *changing* trend and the weekly pattern
+   *      properly; wins when growth is accelerating or the level shifts.
+   *
+   * Neither is a black box. R-squared and MAPE are returned so the admin can
+   * see how much to trust the numbers, and the confidence band widens both
+   * with the residual spread and with the forecast horizon. For the linear
+   * model the band also includes the leverage term (x - x̄)² / Sₓₓ, so it
+   * fans out correctly the further past the data you project.
    */
   async forecast(daysAhead = 14, lookbackDays = 90) {
     const from = new Date(Date.now() - lookbackDays * 86_400_000);
@@ -567,50 +576,85 @@ export const analyticsService = {
       };
     }
 
-    // --- least squares fit: revenue = intercept + slope * dayIndex ---
     const n = history.length;
     const xs = history.map((_, i) => i);
     const ys = history.map((h) => h.revenue);
     const meanX = xs.reduce((a, b) => a + b, 0) / n;
     const meanY = ys.reduce((a, b) => a + b, 0) / n;
 
+    // --- model 1: least squares fit  revenue = intercept + slope * dayIndex ---
     const covariance = xs.reduce((sum, x, i) => sum + (x - meanX) * (ys[i] - meanY), 0);
-    const varianceX = xs.reduce((sum, x) => sum + (x - meanX) ** 2, 0) || 1;
-    const slope = covariance / varianceX;
+    const sxx = xs.reduce((sum, x) => sum + (x - meanX) ** 2, 0) || 1;
+    const slope = covariance / sxx;
     const intercept = meanY - slope * meanX;
+    const linePredict = (x: number) => intercept + slope * x;
 
-    const predict = (x: number) => intercept + slope * x;
-
-    // --- goodness of fit ---
-    const ssTotal = ys.reduce((sum, y) => sum + (y - meanY) ** 2, 0);
-    const ssResidual = ys.reduce((sum, y, i) => sum + (y - predict(i)) ** 2, 0);
-    const rSquared = ssTotal > 0 ? Math.max(0, 1 - ssResidual / ssTotal) : 0;
-    const stdError = Math.sqrt(ssResidual / Math.max(1, n - 2));
-
-    // --- day-of-week seasonality ---
+    // day-of-week seasonality index (multiplicative) for the linear model
     const dowTotals = new Array(7).fill(0);
     const dowCounts = new Array(7).fill(0);
     history.forEach((h) => {
       dowTotals[h.date.getDay()] += h.revenue;
       dowCounts[h.date.getDay()] += 1;
     });
-    const dowIndex = dowTotals.map((total, i) => {
-      if (!dowCounts[i] || meanY === 0) return 1;
-      return total / dowCounts[i] / meanY;
-    });
+    const dowIndex = dowTotals.map((total, i) => (!dowCounts[i] || meanY === 0 ? 1 : total / dowCounts[i] / meanY));
+
+    const olsFitted = history.map((h, i) => Math.max(0, linePredict(i) * (dowIndex[h.date.getDay()] || 1)));
+    const olsStdError = Math.sqrt(
+      ys.reduce((sum, y, i) => sum + (y - olsFitted[i]) ** 2, 0) / Math.max(1, n - 2),
+    );
+
+    // --- model 2: Holt-Winters additive (weekly season) ---
+    const hw = fitHoltWinters(ys, 7);
+    const hwStdError = hw ? Math.sqrt(hw.sse / Math.max(1, n - 7 - 1)) : Infinity;
+
+    // --- pick the better model by in-sample MAPE (on days with real revenue) ---
+    const mape = (fitted: number[], skip = 0) => {
+      let sum = 0;
+      let count = 0;
+      for (let i = skip; i < n; i++) {
+        if (ys[i] <= 0) continue;
+        sum += Math.abs(ys[i] - fitted[i]) / ys[i];
+        count += 1;
+      }
+      return count ? (sum / count) * 100 : Infinity;
+    };
+    const olsMape = mape(olsFitted);
+    const hwMape = hw ? mape(hw.fitted, 7) : Infinity;
+    const useHoltWinters = hw != null && hwMape < olsMape;
+
+    // rSquared of the chosen model, on its valid region
+    const rSquaredOf = (fitted: number[], skip = 0) => {
+      let ssRes = 0;
+      let ssTot = 0;
+      for (let i = skip; i < n; i++) {
+        ssRes += (ys[i] - fitted[i]) ** 2;
+        ssTot += (ys[i] - meanY) ** 2;
+      }
+      return ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+    };
 
     const lastDate = history[history.length - 1].date;
     const forecast: { date: string; predicted: number; lower: number; upper: number; dayOfWeek: string }[] = [];
+    const hwProjection = useHoltWinters ? forecastHoltWinters(hw!, daysAhead) : [];
 
     for (let i = 1; i <= daysAhead; i++) {
       const date = new Date(lastDate);
       date.setDate(date.getDate() + i);
 
-      const trend = predict(n - 1 + i);
-      const seasonal = dowIndex[date.getDay()] || 1;
-      const predicted = Math.max(0, trend * seasonal);
-      // ~95% band, widening with the forecast horizon.
-      const margin = 1.96 * stdError * Math.sqrt(1 + i / n);
+      let predicted: number;
+      let margin: number;
+
+      if (useHoltWinters) {
+        predicted = hwProjection[i - 1];
+        // Approximate 95% band; widens with the horizon.
+        margin = 1.96 * hwStdError * Math.sqrt(1 + i / n);
+      } else {
+        const xf = n - 1 + i;
+        predicted = Math.max(0, linePredict(xf) * (dowIndex[date.getDay()] || 1));
+        // 95% prediction interval incl. the leverage term, so the band fans
+        // out the further past the observed data we project.
+        margin = 1.96 * olsStdError * Math.sqrt(1 + 1 / n + (xf - meanX) ** 2 / sxx);
+      }
 
       forecast.push({
         date: toISODate(date),
@@ -624,23 +668,35 @@ export const analyticsService = {
     const projectedTotal = forecast.reduce((sum, f) => sum + f.predicted, 0);
     const recentTotal = ys.slice(-daysAhead).reduce((a, b) => a + b, 0);
 
+    const chosenRSquared = useHoltWinters ? rSquaredOf(hw!.fitted, 7) : rSquaredOf(olsFitted);
+    const chosenMape = round2(useHoltWinters ? hwMape : olsMape);
+    const effectiveSlope = useHoltWinters ? hw!.trend : slope;
+
     return {
       sufficientData: true,
       history: history.map((h) => ({ date: toISODate(h.date), revenue: round2(h.revenue) })),
       forecast,
       model: {
-        method: 'Least-squares linear trend with day-of-week seasonality',
-        slopePerDay: round2(slope),
-        rSquared: round2(rSquared),
-        confidence: rSquared > 0.6 ? 'high' : rSquared > 0.3 ? 'moderate' : 'low',
+        method: useHoltWinters
+          ? 'Holt-Winters additive (level + trend + weekly season)'
+          : 'Least-squares linear trend with day-of-week seasonality',
+        slopePerDay: round2(effectiveSlope),
+        rSquared: round2(chosenRSquared),
+        confidence: chosenRSquared > 0.6 ? 'high' : chosenRSquared > 0.3 ? 'moderate' : 'low',
         observations: n,
+        mape: chosenMape,
+        seasonality: 'weekly',
+        comparedModels: [
+          { method: 'linear', mape: round2(olsMape) },
+          { method: 'holt-winters', mape: hw ? round2(hwMape) : null },
+        ],
       },
       summary: {
         projectedRevenue: round2(projectedTotal),
         comparablePastRevenue: round2(recentTotal),
         expectedChange: pctChange(projectedTotal, recentTotal),
         projectedDailyAverage: round2(projectedTotal / daysAhead),
-        trend: slope > 0 ? 'growing' : slope < 0 ? 'declining' : 'flat',
+        trend: effectiveSlope > 0 ? 'growing' : effectiveSlope < 0 ? 'declining' : 'flat',
       },
     };
   },

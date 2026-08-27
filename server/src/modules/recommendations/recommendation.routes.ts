@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { recommendationService } from './recommendation.service';
 import { recommendationAnalytics } from './recommendation.analytics';
+import { recommendationEval } from './recommendation.eval';
 import { asyncHandler, ok } from '../../lib/http';
 import { optionalAuth, requireAuth } from '../../middleware/auth';
 import { requireAdmin } from '../../middleware/rbac';
@@ -158,6 +159,25 @@ recommendationRouter.get(
 );
 
 recommendationRouter.get('/admin/coverage', ...adminOnly, asyncHandler(async (_req, res) => ok(res, await recommendationAnalytics.coverage())));
+
+/**
+ * Offline evaluation: temporal hold-out, Precision/Recall/MAP/NDCG @K plus
+ * coverage, diversity and popularity-bias, with MOST_POPULAR and RANDOM
+ * baselines to compare against.
+ */
+recommendationRouter.get(
+  '/admin/evaluate',
+  ...adminOnly,
+  validate({
+    query: z.object({
+      k: z.coerce.number().int().min(1).max(50).optional().default(10),
+      testFraction: z.coerce.number().min(0.1).max(0.5).optional().default(0.2),
+    }),
+  }),
+  asyncHandler(async (req, res) =>
+    ok(res, await recommendationEval.run({ k: Number(req.query.k), testFraction: Number(req.query.testFraction) })),
+  ),
+);
 
 /** Manual model rebuild, for after a bulk import. */
 recommendationRouter.post(

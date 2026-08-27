@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { round2, toNumber } from '../../lib/money';
-import { kmeans, minMaxScale } from '../../lib/kmeans';
+import { kmeans, chooseK, standardize, logScale } from '../../lib/kmeans';
 import { REVENUE_STATUSES } from '../orders/order.service';
 
 const DAY_MS = 86_400_000;
@@ -34,21 +34,32 @@ export type RfmSegment =
  * against fixed cutoffs -- a store with 50 customers and one with 50,000
  * both get a meaningful 1-5 spread instead of everyone landing in the same
  * bucket because absolute order counts differ by store size.
+ *
+ * Scoring is by *value quantile*, not by rank position: everyone at or below
+ * the 20th percentile of the metric gets a 1, up to the 40th a 2, and so on.
+ * This means two customers with the identical spend always get the identical
+ * score (a pure rank cut would arbitrarily split ties across bucket edges).
  */
 function quintileScores(values: number[], higherIsBetter: boolean): number[] {
   const n = values.length;
   if (n === 0) return [];
 
-  const sortedIndices = values
-    .map((value, index) => ({ value, index }))
-    .sort((a, b) => (higherIsBetter ? a.value - b.value : b.value - a.value));
+  const sorted = [...values].sort((a, b) => a - b);
+  const quantileAt = (p: number) => {
+    const idx = (sorted.length - 1) * p;
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  };
+  // Cut points at the 20/40/60/80th percentiles.
+  const cuts = [0.2, 0.4, 0.6, 0.8].map(quantileAt);
 
-  const scores = new Array<number>(n);
-  sortedIndices.forEach(({ index }, rank) => {
-    // rank 0 = worst, so +1 keeps scores in the natural 1..5 "best" direction.
-    scores[index] = Math.min(5, Math.floor((rank / n) * 5) + 1);
+  return values.map((value) => {
+    let bucket = 1;
+    for (const cut of cuts) if (value > cut) bucket += 1;
+    // bucket is now 1..5 in "higher value = higher bucket" terms.
+    return higherIsBetter ? bucket : 6 - bucket;
   });
-  return scores;
 }
 
 function segmentFor(r: number, f: number, m: number): RfmSegment {
@@ -120,22 +131,38 @@ export const customerIntelligenceService = {
   },
 
   /**
-   * K-Means clustering over the same three RFM features (min-max scaled so
-   * recency-in-days doesn't dominate a 1-5 frequency score). This is a
-   * genuinely different technique from the rule-based `segment` above: rather
-   * than hand-written thresholds, it lets the actual distribution of this
-   * store's customers define the groups, then labels each resulting cluster
-   * by its centroid so the output is still readable by a non-technical admin.
+   * K-Means clustering over the three RFM features. This is a genuinely
+   * different technique from the rule-based `segment` above: rather than
+   * hand-written thresholds, it lets the actual distribution of this store's
+   * customers define the groups, then labels each resulting cluster by its
+   * centroid so the output is still readable by a non-technical admin.
+   *
+   * Pipeline (each step is here for a concrete reason):
+   *   1. logScale on frequency + monetary  -- both are heavily right-skewed;
+   *      without this the clusters collapse to "one big spender vs the rest".
+   *   2. standardize (z-score) all three   -- so recency-in-days (0..700) does
+   *      not dominate frequency (0..~20) purely because its numbers are bigger.
+   *   3. chooseK by silhouette when k is not given, so the number of segments
+   *      is data-driven, not a guess. The elbow (inertia) curve is returned
+   *      too. 10 random restarts, best inertia kept.
    */
-  async cluster(k = 4) {
+  async cluster(k?: number) {
     const rfm = await this.rfm();
     if (rfm.length === 0) return { clusters: [], k: 0 };
 
-    const effectiveK = Math.min(k, rfm.length);
     const features = rfm.map((c) => [c.recencyDays, c.frequency, c.monetary]);
-    const scaled = minMaxScale(features);
+    // columns 1 (frequency) and 2 (monetary) are the skewed ones.
+    const prepared = standardize(logScale(features, [1, 2]));
 
-    const result = kmeans(scaled, effectiveK, { seed: 7 });
+    // Cap the search so we do not fit more segments than the base can support:
+    // roughly sqrt(n/2) clusters, e.g. ~3 for 18 customers, 5 for 50, 6 for 72+.
+    const maxK = Math.max(2, Math.min(6, Math.round(Math.sqrt(rfm.length / 2)), rfm.length - 1));
+    const selection = k
+      ? { k: Math.min(k, rfm.length), silhouette: 0, candidates: [] as { k: number; inertia: number; silhouette: number }[] }
+      : chooseK(prepared, { min: 2, max: maxK, seed: 7 });
+
+    const effectiveK = Math.max(1, Math.min(selection.k, rfm.length));
+    const result = kmeans(prepared, effectiveK, { seed: 7, restarts: 10 });
 
     const clusters = Array.from({ length: effectiveK }, (_, clusterIndex) => {
       const members = rfm.filter((_, i) => result.assignments[i] === clusterIndex);
@@ -160,7 +187,10 @@ export const customerIntelligenceService = {
 
     return {
       k: effectiveK,
+      kSelection: k ? 'manual' : 'auto (silhouette)',
+      silhouette: round2(result.silhouette),
       inertia: round2(result.inertia),
+      elbow: selection.candidates,
       clusters: clusters.sort((a, b) => b.avgMonetary - a.avgMonetary),
     };
   },

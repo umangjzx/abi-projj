@@ -381,18 +381,29 @@ function CustomersTab({ period }: { period: RangePeriod }) {
 }
 
 /**
- * K-Means clustering over min-max-scaled Recency/Frequency/Monetary features.
- * Unlike the rule-based segments above (fixed thresholds), the groups here
- * are discovered from the actual distribution of this store's customers --
- * each cluster is labelled from its centroid so the result stays readable.
+ * K-Means clustering over log-scaled, z-standardised Recency/Frequency/Monetary
+ * features. Unlike the rule-based segments above (fixed thresholds), the groups
+ * here are discovered from the actual distribution of this store's customers.
+ * `k` itself is chosen by silhouette score (k = 2..6), and each cluster is
+ * labelled from its centroid so the result stays readable.
  */
 function CustomerClusteringPanel() {
-  const { data, isLoading, error, refetch } = useCustomerClusters(4);
+  const { data, isLoading, error, refetch } = useCustomerClusters();
+
+  const quality =
+    data == null
+      ? null
+      : `k = ${data.k}${data.kSelection ? ` (${data.kSelection})` : ''}` +
+        (typeof data.silhouette === 'number' ? ` · silhouette ${data.silhouette.toFixed(2)}` : '');
 
   return (
     <ChartCard
       title="Customer clustering (K-Means)"
-      description="Groups discovered from Recency, Frequency & Monetary behaviour — not fixed thresholds"
+      description={
+        quality
+          ? `Groups discovered from Recency, Frequency & Monetary behaviour — ${quality}`
+          : 'Groups discovered from Recency, Frequency & Monetary behaviour — not fixed thresholds'
+      }
       isLoading={isLoading}
       isEmpty={!error && data?.clusters.length === 0}
       height={220}

@@ -100,7 +100,11 @@ export const recommendationAnalytics = {
     }));
   },
 
-  /** Strongest co-occurrence pairs, so an admin can sanity-check the model. */
+  /**
+   * Strongest associations by lift, so an admin can sanity-check the model.
+   * `lift` is the stored score; `> 1` means the pair is bought together more
+   * often than the two products' individual popularity would predict.
+   */
   async topAffinities(limit = 20) {
     const rows = await prisma.productAffinity.findMany({
       orderBy: [{ score: 'desc' }, { coOccurrence: 'desc' }],
@@ -116,6 +120,7 @@ export const recommendationAnalytics = {
       productA: r.productA.name,
       productB: r.productB.name,
       coOccurrence: r.coOccurrence,
+      lift: round2(r.score),
       score: round2(r.score),
       computedAt: r.computedAt,
     }));
