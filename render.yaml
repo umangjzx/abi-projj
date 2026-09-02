@@ -102,11 +102,13 @@ services:
         value: 5
       - key: LOW_STOCK_THRESHOLD
         value: 15
-      # Set these once the frontend is deployed -- see the note above.
+      # Deployment-specific -- set in the Render dashboard to the deployed
+      # frontend origin (e.g. https://abi-projj.vercel.app). `sync: false`
+      # keeps a blueprint re-sync from clobbering them back to localhost.
       - key: CORS_ORIGINS
-        value: "http://localhost:5173"
+        sync: false
       - key: CLIENT_URL
-        value: "http://localhost:5173"
+        sync: false
 
 # No `databases:` block: the database is an external managed Postgres (Neon),
 # configured via the DATABASE_URL env var above. Render's free managed Postgres
