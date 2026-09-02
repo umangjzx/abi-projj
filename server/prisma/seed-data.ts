@@ -863,7 +863,8 @@ export const CATEGORIES: SeedCategory[] = [
 
 // ---------------------------------------------------------------- customers ---
 
-export const CUSTOMER_SEEDS = [
+/** Hand-written customers with distinct, recognisable buying profiles. */
+const CURATED_CUSTOMERS = [
   { name: 'Priya Raghavan', email: 'priya@example.com', phone: '9840012301', city: 'Coimbatore', state: 'Tamil Nadu', pincode: '641001', profile: 'loyal' },
   { name: 'Arun Kumar', email: 'arun@example.com', phone: '9840012302', city: 'Coimbatore', state: 'Tamil Nadu', pincode: '641004', profile: 'loyal' },
   { name: 'Meena Lakshmi', email: 'meena@example.com', phone: '9840012303', city: 'Tiruppur', state: 'Tamil Nadu', pincode: '641601', profile: 'regular' },
@@ -882,7 +883,60 @@ export const CUSTOMER_SEEDS = [
   { name: 'Ganesh Moorthy', email: 'ganesh@example.com', phone: '9840012316', city: 'Salem', state: 'Tamil Nadu', pincode: '636007', profile: 'churned' },
   { name: 'Aishwarya Balan', email: 'aishwarya@example.com', phone: '9840012317', city: 'Coimbatore', state: 'Tamil Nadu', pincode: '641002', profile: 'new' },
   { name: 'Nitin Verma', email: 'nitin@example.com', phone: '9840012318', city: 'Bengaluru', state: 'Karnataka', pincode: '560001', profile: 'new' },
-] as const;
+];
+
+// Additional synthetic customers. 18 hand-written customers are far too few for
+// the recommender's offline evaluation or RFM clustering to produce stable
+// numbers (the eval metrics are noise-dominated at that size), so the base is
+// padded out to ~60 with deterministically generated shoppers.
+const GEN_FIRST = [
+  'Ravi', 'Anjali', 'Sathish', 'Nithya', 'Prakash', 'Revathi', 'Manoj', 'Sowmya', 'Bala', 'Keerthi',
+  'Hari', 'Divakar', 'Sundar', 'Lavanya', 'Vinoth', 'Preethi', 'Naveen', 'Shruthi', 'Gokul', 'Ramya',
+  'Dinesh', 'Anitha', 'Surya', 'Meghana', 'Arjun', 'Deepika', 'Vijay', 'Harini', 'Kiran', 'Sangeetha',
+  'Ashwin', 'Nandini', 'Praveen', 'Yamini', 'Rajesh', 'Bhavana', 'Siddharth', 'Kalpana', 'Tarun', 'Indira',
+  'Balaji', 'Sruthi', 'Mahesh', 'Vidya',
+];
+const GEN_LAST = [
+  'Venkatesh', 'Chandran', 'Pillai', 'Reddy', 'Gopal', 'Srinivasan', 'Balakrishnan', 'Kannan',
+  'Mahadevan', 'Varma', 'Sekhar', 'Natarajan', 'Ramanathan', 'Prabhu', 'Anand',
+];
+const GEN_LOCATIONS = [
+  { city: 'Coimbatore', state: 'Tamil Nadu', pincode: '641009' },
+  { city: 'Chennai', state: 'Tamil Nadu', pincode: '600017' },
+  { city: 'Bengaluru', state: 'Karnataka', pincode: '560095' },
+  { city: 'Kochi', state: 'Kerala', pincode: '682024' },
+  { city: 'Madurai', state: 'Tamil Nadu', pincode: '625009' },
+  { city: 'Salem', state: 'Tamil Nadu', pincode: '636016' },
+  { city: 'Tiruppur', state: 'Tamil Nadu', pincode: '641607' },
+  { city: 'Trichy', state: 'Tamil Nadu', pincode: '620001' },
+  { city: 'Mysuru', state: 'Karnataka', pincode: '570009' },
+  { city: 'Thrissur', state: 'Kerala', pincode: '680001' },
+];
+// Weighted spread of behaviours: mostly regular/occasional, a solid loyal
+// core, a handful of churned and new.
+const GEN_PROFILES = [
+  'regular', 'loyal', 'occasional', 'regular', 'occasional', 'loyal', 'regular', 'churned',
+  'occasional', 'regular', 'loyal', 'occasional', 'regular', 'new', 'occasional', 'loyal',
+  'regular', 'churned', 'occasional', 'regular', 'loyal',
+];
+
+const GENERATED_CUSTOMERS = Array.from({ length: 44 }, (_, i) => {
+  const first = GEN_FIRST[i % GEN_FIRST.length];
+  const last = GEN_LAST[(i * 7 + 3) % GEN_LAST.length];
+  const loc = GEN_LOCATIONS[(i * 3 + 1) % GEN_LOCATIONS.length];
+  const n = i + 19; // continues the curated numbering (1..18)
+  return {
+    name: `${first} ${last}`,
+    email: `${first}.${last}${n}@example.com`.toLowerCase(),
+    phone: String(9840012300 + n),
+    city: loc.city,
+    state: loc.state,
+    pincode: loc.pincode,
+    profile: GEN_PROFILES[i % GEN_PROFILES.length],
+  };
+});
+
+export const CUSTOMER_SEEDS = [...CURATED_CUSTOMERS, ...GENERATED_CUSTOMERS];
 
 export const COUPON_SEEDS = [
   { code: 'WELCOME50', description: 'Flat ₹50 off on your first order above ₹399', discountType: 'FLAT' as const, value: 50, minOrderValue: 399, perUserLimit: 1, usageLimit: 2000 },

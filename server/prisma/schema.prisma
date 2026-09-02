@@ -19,7 +19,14 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Runtime queries go through the connection pooler (PgBouncer). Neon closes
+  // idle Postgres connections aggressively, so a direct pool goes stale and
+  // throws intermittent 500s; the pooler manages the server side for us.
+  url = env("DATABASE_URL")
+  // Migrations and introspection need a direct (unpooled) connection --
+  // PgBouncer's transaction mode cannot run them. Falls back to DATABASE_URL
+  // locally, where a plain Postgres has no separate pooled endpoint.
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------

@@ -5,11 +5,12 @@
 # which expires 30 days after creation.
 #
 # Usage:
-#   1. Create a free Postgres at https://neon.tech and copy its connection
-#      string (use the direct / unpooled one).
+#   1. Create a free Postgres at https://neon.tech.
 #   2. Render dashboard -> "New +" -> "Blueprint" -> point at this repo.
-#   3. In the API service's Environment tab, set DATABASE_URL to the Neon
-#      string with `?sslmode=require` appended.
+#   3. In the API service's Environment tab set BOTH:
+#        DATABASE_URL = Neon POOLED string  (host has "-pooler"), + ?sslmode=require
+#        DIRECT_URL   = Neon unpooled string (same host, no "-pooler"), + ?sslmode=require
+#      The app runs its queries through the pooler; migrations use DIRECT_URL.
 #   4. The start command runs `prisma migrate deploy` on every boot, so the
 #      schema is created automatically. Load demo data once with
 #      `npm run db:seed` via the Render shell (it wipes existing data, so it
@@ -45,10 +46,13 @@ services:
         value: 10000
       - key: API_PREFIX
         value: /api/v1
-      # Set manually in the Render dashboard (Environment tab). Points at an
-      # external managed Postgres (Neon) so it does not expire like Render's
-      # free tier. Include ?sslmode=require in the value.
+      # Both set manually in the Render dashboard (Environment tab), pointing at
+      # an external managed Postgres (Neon) so it does not expire like Render's
+      # free tier. DATABASE_URL = the POOLED connection string (host contains
+      # "-pooler"); DIRECT_URL = the unpooled one. Both need ?sslmode=require.
       - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
         sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true

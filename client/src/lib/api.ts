@@ -115,13 +115,18 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   skipRefresh?: boolean;
 }
 
+const TRANSIENT_STATUS = new Set([502, 503, 504]);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiEnvelope<T>> {
   const { body, _isRetry, skipRefresh, headers, ...rest } = options;
 
   const isFormData = body instanceof FormData;
   const csrf = readCookie('csrfToken');
+  const method = (rest.method ?? 'GET').toUpperCase();
+  const idempotent = method === 'GET' || method === 'HEAD';
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const init: RequestInit = {
     ...rest,
     credentials: 'include',
     headers: {
@@ -131,7 +136,30 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
       ...(headers as Record<string, string> | undefined),
     },
     body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
-  });
+  };
+
+  // Free-tier hosting (Render + Neon) scales to zero when idle; the first
+  // request after a nap can fail outright or return a 5xx from the gateway
+  // while things spin up. Retry a couple of times with a short backoff so the
+  // UI shows a brief pause instead of a hard error. Non-idempotent methods are
+  // only retried on a genuine network failure (the request never landed), not
+  // on a 5xx (which might have been processed).
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(1200 * attempt);
+    try {
+      response = await fetch(`${BASE_URL}${path}`, init);
+    } catch {
+      response = undefined;
+      continue;
+    }
+    if (attempt < 2 && idempotent && TRANSIENT_STATUS.has(response.status)) continue;
+    break;
+  }
+
+  if (!response) {
+    throw new ApiError(0, 'Could not reach the server. It may be waking up — try again in a moment.', 'NETWORK');
+  }
 
   // 204 has no body to parse.
   if (response.status === 204) return { success: true, data: undefined as T };

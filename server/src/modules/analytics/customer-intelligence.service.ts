@@ -185,6 +185,12 @@ export const customerIntelligenceService = {
       };
     });
 
+    // Two genuinely different clusters can land on the same centroid label
+    // (e.g. two "Dormant / at risk" groups that differ mainly on recency).
+    // Append the dimension that actually separates them so every label is
+    // unique and still descriptive.
+    disambiguateLabels(clusters);
+
     return {
       k: effectiveK,
       kSelection: k ? 'manual' : 'auto (silhouette)',
@@ -195,6 +201,45 @@ export const customerIntelligenceService = {
     };
   },
 };
+
+/**
+ * Makes cluster labels unique. For any label shared by 2+ clusters, finds the
+ * RFM dimension with the widest relative spread across the colliding group and
+ * appends a short comparative ("- more recent" / "- higher spend" / ...).
+ */
+function disambiguateLabels(
+  clusters: { label: string; avgRecencyDays: number; avgFrequency: number; avgMonetary: number }[],
+): void {
+  const groups = new Map<string, typeof clusters>();
+  for (const c of clusters) {
+    const g = groups.get(c.label);
+    if (g) g.push(c);
+    else groups.set(c.label, [c]);
+  }
+
+  const relativeSpread = (values: number[]) => {
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    return max === min ? 0 : (max - min) / (Math.abs(max) + Math.abs(min) || 1);
+  };
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+
+    const dimensions = [
+      { spread: relativeSpread(group.map((c) => c.avgRecencyDays)), ends: ['more recent', 'less recent'], value: (c: (typeof group)[number]) => c.avgRecencyDays },
+      { spread: relativeSpread(group.map((c) => c.avgFrequency)), ends: ['orders less often', 'orders more often'], value: (c: (typeof group)[number]) => c.avgFrequency },
+      { spread: relativeSpread(group.map((c) => c.avgMonetary)), ends: ['lower spend', 'higher spend'], value: (c: (typeof group)[number]) => c.avgMonetary },
+    ];
+    const dim = dimensions.sort((a, b) => b.spread - a.spread)[0];
+
+    const ordered = [...group].sort((a, b) => dim.value(a) - dim.value(b)); // ascending
+    ordered.forEach((c, i) => {
+      const tag = i === 0 ? dim.ends[0] : i === ordered.length - 1 ? dim.ends[1] : 'mid';
+      c.label = `${c.label} - ${tag}`;
+    });
+  }
+}
 
 /**
  * Turns a cluster's centroid averages into a human label by comparing them
