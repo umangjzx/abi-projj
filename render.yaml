@@ -1,16 +1,22 @@
 # Render Blueprint -- https://render.com/docs/blueprint-spec
 #
-# Deploys the Express API as a free Web Service and provisions a free managed
-# PostgreSQL instance, wiring DATABASE_URL between them automatically.
+# Deploys the Express API as a free Web Service. The database is an EXTERNAL
+# managed Postgres (Neon free tier) rather than Render's own free Postgres,
+# which expires 30 days after creation.
 #
-# Usage: In the Render dashboard, "New +" -> "Blueprint" -> point at this repo.
-# After the first deploy, run the one-off "Migrate & seed" job below (or run
-# `npm run db:setup` yourself via the Render shell) to create the schema and
-# load demo data.
+# Usage:
+#   1. Create a free Postgres at https://neon.tech and copy its connection
+#      string (use the direct / unpooled one).
+#   2. Render dashboard -> "New +" -> "Blueprint" -> point at this repo.
+#   3. In the API service's Environment tab, set DATABASE_URL to the Neon
+#      string with `?sslmode=require` appended.
+#   4. The start command runs `prisma migrate deploy` on every boot, so the
+#      schema is created automatically. Load demo data once with
+#      `npm run db:seed` via the Render shell (it wipes existing data, so it
+#      is never run automatically).
 #
-# CORS_ORIGINS and CLIENT_URL are left blank here -- set them to your Vercel
-# domain in the Render dashboard once the frontend is deployed, since Render
-# cannot know that URL ahead of time.
+# CORS_ORIGINS and CLIENT_URL default to localhost -- set them to your Vercel
+# domain in the Render dashboard once the frontend is deployed.
 
 services:
   - type: web
@@ -39,10 +45,11 @@ services:
         value: 10000
       - key: API_PREFIX
         value: /api/v1
+      # Set manually in the Render dashboard (Environment tab). Points at an
+      # external managed Postgres (Neon) so it does not expire like Render's
+      # free tier. Include ?sslmode=require in the value.
       - key: DATABASE_URL
-        fromDatabase:
-          name: thuthi-dairy-db
-          property: connectionString
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -101,7 +108,6 @@ services:
       - key: CLIENT_URL
         value: "http://localhost:5173"
 
-databases:
-  - name: thuthi-dairy-db
-    plan: free
-    region: singapore
+# No `databases:` block: the database is an external managed Postgres (Neon),
+# configured via the DATABASE_URL env var above. Render's free managed Postgres
+# expires 30 days after creation, which is why it is not used here.
