@@ -11,14 +11,18 @@ import { Alert, ErrorState, PageLoader } from '@/components/ui/feedback';
 import { ProductImage } from '@/components/product/ProductImage';
 import { OrderTracker } from '@/components/store/OrderTracker';
 import { useOrder } from '@/hooks/useCatalog';
+import { useAuth } from '@/context/AuthContext';
 import { api, ApiError } from '@/lib/api';
+import { openRazorpayCheckout } from '@/lib/razorpay';
 import { useToast } from '@/components/ui/toast';
-import type { OrderTracking } from '@/types';
+import type { Order, OrderTracking } from '@/types';
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { user } = useAuth();
+  const [payingNow, setPayingNow] = React.useState(false);
 
   const { data: order, isLoading, error, refetch } = useOrder(id);
   const { data: tracking } = useQuery({
@@ -48,6 +52,55 @@ export default function OrderDetailPage() {
       await api.download(`/orders/${order.id}/invoice`, `invoice-${order.orderNumber}.pdf`);
     } catch {
       toast.error('Could not download invoice');
+    }
+  };
+
+  const verifyPayment = useMutation({
+    mutationFn: (vars: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
+      api.post<Order>(`/orders/${id}/payment/verify`, vars),
+  });
+
+  const completePayment = async () => {
+    if (!order) return;
+    setPayingNow(true);
+    try {
+      const retried = await api.post<Order>(`/orders/${order.id}/payment/retry`);
+      const payment = retried.payment;
+      if (!payment?.razorpayOrderId || !payment.razorpayKeyId) {
+        toast.error('Online payment is not available right now');
+        return;
+      }
+      await openRazorpayCheckout({
+        key: payment.razorpayKeyId,
+        order_id: payment.razorpayOrderId,
+        amount: Math.round(payment.amount * 100),
+        currency: 'INR',
+        name: 'Thuthi Dairy',
+        description: `Order ${order.orderNumber}`,
+        prefill: { name: user?.name, email: user?.email, contact: user?.phone ?? undefined },
+        handler: (response) => {
+          verifyPayment.mutate(
+            {
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            },
+            {
+              onSuccess: () => {
+                queryClient.invalidateQueries({ queryKey: ['order', id] });
+                queryClient.invalidateQueries({ queryKey: ['orders'] });
+                toast.success('Payment successful!');
+              },
+              onError: (err: ApiError) => toast.error('Payment could not be verified', err.message),
+              onSettled: () => setPayingNow(false),
+            },
+          );
+        },
+        modal: { ondismiss: () => setPayingNow(false) },
+      });
+    } catch (err) {
+      setPayingNow(false);
+      toast.error('Could not start payment', err instanceof ApiError ? err.message : undefined);
     }
   };
 
@@ -167,6 +220,11 @@ export default function OrderDetailPage() {
                   </Badge>
                 </div>
               </div>
+              {['PENDING', 'FAILED'].includes(order.payment.status) && order.payment.method !== 'COD' && (
+                <Button size="sm" className="mt-3 w-full" onClick={completePayment} loading={payingNow}>
+                  Complete payment
+                </Button>
+              )}
             </div>
           )}
 

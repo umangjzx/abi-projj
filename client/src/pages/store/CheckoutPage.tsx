@@ -8,7 +8,9 @@ import { Alert, PageLoader } from '@/components/ui/feedback';
 import { Textarea } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCart } from '@/hooks/useCart';
+import { useAuth } from '@/context/AuthContext';
 import { api, ApiError } from '@/lib/api';
+import { openRazorpayCheckout } from '@/lib/razorpay';
 import { useToast } from '@/components/ui/toast';
 import { AddressForm } from '@/components/account/AddressForm';
 import type { Address, Order, PaymentMethod } from '@/types';
@@ -25,6 +27,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { cart, isLoading: cartLoading } = useCart();
 
   const { data: addresses, isLoading: addressesLoading } = useQuery({
@@ -37,6 +40,9 @@ export default function CheckoutPage() {
   const [notes, setNotes] = React.useState('');
   const [addressDialogOpen, setAddressDialogOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // Keeps "Place order" showing a spinner through the Razorpay popup, not
+  // just through the initial POST /orders call.
+  const [awaitingPayment, setAwaitingPayment] = React.useState(false);
 
   React.useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddressId) {
@@ -44,14 +50,86 @@ export default function CheckoutPage() {
     }
   }, [addresses, selectedAddressId]);
 
+  const verifyPayment = useMutation({
+    mutationFn: (vars: {
+      orderId: string;
+      razorpayOrderId: string;
+      razorpayPaymentId: string;
+      razorpaySignature: string;
+    }) => api.post<Order>(`/orders/${vars.orderId}/payment/verify`, vars),
+  });
+
   const placeOrder = useMutation({
     mutationFn: () =>
       api.post<Order>('/orders', { addressId: selectedAddressId, paymentMethod, notes: notes.trim() || undefined }),
-    onSuccess: (order) => {
+    onSuccess: async (order) => {
       queryClient.invalidateQueries({ queryKey: ['cart'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Order placed!', `Order ${order.orderNumber} is confirmed.`);
-      navigate(`/order-confirmed/${order.id}`);
+
+      const payment = order.payment;
+
+      if (!payment || payment.method === 'COD' || payment.status === 'PAID') {
+        // COD, or the gateway isn't configured and the order was settled
+        // immediately (dev fallback) -- nothing left to collect.
+        toast.success('Order placed!', `Order ${order.orderNumber} is confirmed.`);
+        navigate(`/order-confirmed/${order.id}`);
+        return;
+      }
+
+      if (!payment.razorpayOrderId || !payment.razorpayKeyId) {
+        // Payment is PENDING but the gateway order failed to create (e.g. a
+        // transient Razorpay outage) -- don't claim success, send the
+        // customer to retry from their order instead.
+        toast.error('Order placed, but payment setup failed', 'You can complete payment from your orders page.');
+        navigate(`/account/orders/${order.id}`);
+        return;
+      }
+
+      setAwaitingPayment(true);
+      try {
+        await openRazorpayCheckout({
+          key: payment.razorpayKeyId!,
+          order_id: payment.razorpayOrderId!,
+          amount: Math.round(payment.amount * 100),
+          currency: 'INR',
+          name: 'Thuthi Dairy',
+          description: `Order ${order.orderNumber}`,
+          prefill: { name: user?.name, email: user?.email, contact: user?.phone ?? undefined },
+          handler: (response) => {
+            verifyPayment.mutate(
+              {
+                orderId: order.id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              },
+              {
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: ['order', order.id] });
+                  toast.success('Payment successful!', `Order ${order.orderNumber} is confirmed.`);
+                  navigate(`/order-confirmed/${order.id}`);
+                },
+                onError: (err: ApiError) => {
+                  setAwaitingPayment(false);
+                  toast.error('Payment could not be verified', err.message);
+                  navigate(`/account/orders/${order.id}`);
+                },
+              },
+            );
+          },
+          modal: {
+            ondismiss: () => {
+              setAwaitingPayment(false);
+              toast.error('Payment not completed', 'You can finish paying anytime from your orders page.');
+              navigate(`/account/orders/${order.id}`);
+            },
+          },
+        });
+      } catch (err) {
+        setAwaitingPayment(false);
+        toast.error('Could not open the payment gateway', err instanceof Error ? err.message : undefined);
+        navigate(`/account/orders/${order.id}`);
+      }
     },
     onError: (err: ApiError) => setError(err.message),
   });
@@ -234,7 +312,7 @@ export default function CheckoutPage() {
             <span className="font-display text-xl font-bold">{formatCurrency(cart.pricing.total)}</span>
           </div>
 
-          <Button size="lg" className="w-full" onClick={handlePlaceOrder} loading={placeOrder.isPending}>
+          <Button size="lg" className="w-full" onClick={handlePlaceOrder} loading={placeOrder.isPending || awaitingPayment}>
             Place order
           </Button>
         </div>

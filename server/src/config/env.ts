@@ -69,6 +69,12 @@ const schema = z.object({
   FREE_DELIVERY_THRESHOLD: num(499),
   TAX_PERCENT: num(5),
   LOW_STOCK_THRESHOLD: int(15),
+
+  // Test-mode keys work with no KYC/business account -- leave blank in local
+  // dev and non-COD payments fall back to the simulated-PAID flow.
+  RAZORPAY_KEY_ID: z.string().optional().default(''),
+  RAZORPAY_KEY_SECRET: z.string().optional().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -96,6 +102,7 @@ export const env = {
   cloudinaryEnabled: Boolean(
     raw.CLOUDINARY_CLOUD_NAME && raw.CLOUDINARY_API_KEY && raw.CLOUDINARY_API_SECRET,
   ),
+  razorpayEnabled: Boolean(raw.RAZORPAY_KEY_ID && raw.RAZORPAY_KEY_SECRET),
 } as const;
 
 export type Env = typeof env;

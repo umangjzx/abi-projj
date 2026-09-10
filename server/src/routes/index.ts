@@ -7,6 +7,7 @@ import { addressRouter } from '../modules/customers/address.routes';
 import { wishlistRouter } from '../modules/customers/wishlist.routes';
 import { customerRouter } from '../modules/customers/customer.routes';
 import { orderRouter } from '../modules/orders/order.routes';
+import { webhookRouter } from '../modules/orders/webhook.routes';
 import { inventoryRouter } from '../modules/inventory/inventory.routes';
 import { reviewRouter } from '../modules/reviews/review.routes';
 import { recommendationRouter } from '../modules/recommendations/recommendation.routes';
@@ -58,6 +59,9 @@ apiRouter.use('/cart', cartRouter);
 apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/addresses', addressRouter);
 apiRouter.use('/orders', orderRouter);
+// Unauthenticated: Razorpay calls this directly, verified by HMAC signature
+// inside the handler instead of requireAuth.
+apiRouter.use('/webhooks', webhookRouter);
 apiRouter.use('/coupons', couponRouter);
 apiRouter.use('/offers', offerRouter);
 apiRouter.use('/reviews', reviewRouter);

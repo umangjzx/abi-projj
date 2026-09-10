@@ -249,6 +249,9 @@ export interface Order {
     amount: number;
     transactionRef: string | null;
     paidAt: string | null;
+    /** Present only while status is PENDING and method isn't COD -- needed to open Razorpay Checkout. */
+    razorpayOrderId?: string;
+    razorpayKeyId?: string;
   } | null;
   items: OrderItem[];
   timeline: { status: OrderStatus; note: string | null; at: string; by: string }[];

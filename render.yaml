@@ -113,6 +113,14 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      # Real payment gateway. Blank = non-COD orders fall back to the
+      # simulated-PAID flow instead of calling Razorpay.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
 
 # No `databases:` block: the database is an external managed Postgres (Neon),
 # configured via the DATABASE_URL env var above. Render's free managed Postgres

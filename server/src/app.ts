@@ -13,6 +13,16 @@ import { errorHandler, notFoundHandler } from './middleware/error';
 import { globalLimiter, issueCsrfToken, sanitizePayload } from './middleware/security';
 import { UPLOAD_DIR } from './lib/storage';
 
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      /** Raw request bytes, captured for webhook HMAC signature checks. */
+      rawBody?: Buffer;
+    }
+  }
+}
+
 export function createApp(): Application {
   const app = express();
 
@@ -54,7 +64,18 @@ export function createApp(): Application {
   );
 
   // --------------------------------------------------------------- parsing ---
-  app.use(express.json({ limit: '1mb' }));
+  // `verify` stashes the raw bytes on req.rawBody -- needed to check the
+  // Razorpay webhook HMAC signature, which must be computed over the exact
+  // wire payload rather than a re-serialized (and therefore byte-different)
+  // JSON object.
+  app.use(
+    express.json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(cookieParser());
   app.use(compression());

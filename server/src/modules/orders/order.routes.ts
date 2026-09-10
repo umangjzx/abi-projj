@@ -127,3 +127,22 @@ orderRouter.post(
     ok(res, await orderService.cancelByCustomer(req.params.id, req.user!.sub, req.body.reason)),
   ),
 );
+
+orderRouter.post(
+  '/:id/payment/verify',
+  validate({
+    params: idParam,
+    body: z.object({
+      razorpayOrderId: z.string().min(1),
+      razorpayPaymentId: z.string().min(1),
+      razorpaySignature: z.string().min(1),
+    }),
+  }),
+  asyncHandler(async (req, res) => ok(res, await orderService.verifyPayment(req.params.id, req.user!.sub, req.body))),
+);
+
+orderRouter.post(
+  '/:id/payment/retry',
+  validate({ params: idParam }),
+  asyncHandler(async (req, res) => ok(res, await orderService.retryPayment(req.params.id, req.user!.sub))),
+);

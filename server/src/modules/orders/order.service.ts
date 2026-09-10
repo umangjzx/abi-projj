@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Prisma, type OrderStatus, type PaymentMethod } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { ApiError } from '../../lib/ApiError';
@@ -6,6 +7,8 @@ import { toDecimal, toNumber, formatINR } from '../../lib/money';
 import { logger } from '../../lib/logger';
 import { sendMail, mailTemplates } from '../../lib/mailer';
 import { pageMeta, type PageParams } from '../../lib/http';
+import { env } from '../../config/env';
+import { razorpay } from '../../lib/razorpay';
 import { cartService } from '../cart/cart.service';
 import { inventoryService } from '../inventory/inventory.service';
 import { recommendationService } from '../recommendations/recommendation.service';
@@ -66,6 +69,16 @@ function serializeOrder(order: any) {
           amount: toNumber(order.payment.amount),
           transactionRef: order.payment.transactionRef,
           paidAt: order.payment.paidAt,
+          // Only surface gateway details while there is still a payment to
+          // collect -- the client needs these to open Razorpay Checkout.
+          ...(order.payment.status === 'PENDING' && order.payment.method !== 'COD'
+            ? {
+                razorpayOrderId: (order.payment.gatewayResponse as Record<string, unknown> | null)?.razorpayOrderId as
+                  | string
+                  | undefined,
+                razorpayKeyId: env.razorpayEnabled ? env.RAZORPAY_KEY_ID : undefined,
+              }
+            : {}),
         }
       : null,
     items: (order.items ?? []).map((item: any) => ({
@@ -163,14 +176,19 @@ export const orderService = {
             payment: {
               create: {
                 method: input.paymentMethod,
-                // Card/UPI/etc. are simulated as captured immediately; COD is
-                // collected on delivery. A real gateway would move this to a
-                // webhook.
-                status: input.paymentMethod === 'COD' ? 'PENDING' : 'PAID',
+                // COD is collected on delivery. Online methods are captured
+                // via Razorpay once the customer completes checkout (see the
+                // gateway-order call below) and confirmed by verifyPayment /
+                // the webhook -- unless Razorpay isn't configured, in which
+                // case they're simulated as captured immediately so local
+                // dev works without signing up for a gateway.
+                status: input.paymentMethod === 'COD' || env.razorpayEnabled ? 'PENDING' : 'PAID',
                 amount: toDecimal(pricing.total),
-                paidAt: input.paymentMethod === 'COD' ? null : new Date(),
+                paidAt: input.paymentMethod === 'COD' || env.razorpayEnabled ? null : new Date(),
                 transactionRef:
-                  input.paymentMethod === 'COD' ? null : `SIM-${orderNumber}-${Date.now().toString(36).toUpperCase()}`,
+                  input.paymentMethod === 'COD' || env.razorpayEnabled
+                    ? null
+                    : `SIM-${orderNumber}-${Date.now().toString(36).toUpperCase()}`,
               },
             },
           },
@@ -213,6 +231,10 @@ export const orderService = {
       },
       { timeout: 20_000 },
     );
+
+    if (input.paymentMethod !== 'COD' && env.razorpayEnabled) {
+      await createGatewayOrder(order.id, order.orderNumber, pricing.total);
+    }
 
     // ------------------------------------------------------------ side effects ---
     // Deliberately outside the transaction: none of these should be able to
@@ -446,6 +468,118 @@ export const orderService = {
     return this.updateStatus(orderId, 'CANCELLED', userId, reason ?? 'Cancelled by customer');
   },
 
+  /**
+   * Confirms an online payment right after the customer completes the
+   * Razorpay Checkout popup. This is a convenience path so the browser can
+   * move straight to the confirmation page -- `handleGatewayWebhook` below
+   * is the source of truth and will independently mark the same payment PAID
+   * even if the customer closes the tab before this ever runs.
+   */
+  async verifyPayment(
+    orderId: string,
+    userId: string,
+    input: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string },
+  ) {
+    if (!env.razorpayEnabled) throw ApiError.badRequest('Online payments are not available right now');
+
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { payment: true } });
+    if (!order) throw ApiError.notFound('Order not found');
+    if (order.userId !== userId) throw ApiError.forbidden();
+    if (!order.payment || order.payment.method === 'COD') throw ApiError.badRequest('This order has no online payment to verify');
+    if (order.payment.status === 'PAID') return this.getById(orderId, userId);
+
+    const expected = crypto
+      .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+      .update(`${input.razorpayOrderId}|${input.razorpayPaymentId}`)
+      .digest('hex');
+    const valid =
+      expected.length === input.razorpaySignature.length &&
+      crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.razorpaySignature));
+
+    if (!valid) {
+      await prisma.payment.update({ where: { id: order.payment.id }, data: { status: 'FAILED' } });
+      throw ApiError.badRequest('Payment verification failed');
+    }
+
+    await prisma.payment.update({
+      where: { id: order.payment.id },
+      data: {
+        status: 'PAID',
+        paidAt: new Date(),
+        transactionRef: input.razorpayPaymentId,
+        gatewayResponse: {
+          ...(order.payment.gatewayResponse as Record<string, unknown> | null),
+          razorpayPaymentId: input.razorpayPaymentId,
+          razorpaySignature: input.razorpaySignature,
+        },
+      },
+    });
+
+    return this.getById(orderId, userId);
+  },
+
+  /** Re-issues a Razorpay order for a still-unpaid order, e.g. after the customer closed the checkout popup. */
+  async retryPayment(orderId: string, userId: string) {
+    if (!env.razorpayEnabled) throw ApiError.badRequest('Online payments are not available right now');
+
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { payment: true } });
+    if (!order) throw ApiError.notFound('Order not found');
+    if (order.userId !== userId) throw ApiError.forbidden();
+    if (!order.payment || order.payment.method === 'COD') throw ApiError.badRequest('This order does not need an online payment');
+    // FAILED is retryable (a declined card, a bad signature) -- PAID/REFUNDED are not.
+    if (!['PENDING', 'FAILED'].includes(order.payment.status)) {
+      throw ApiError.badRequest(`Payment is already ${order.payment.status.toLowerCase()}`);
+    }
+
+    await prisma.payment.update({ where: { id: order.payment.id }, data: { status: 'PENDING' } });
+    await createGatewayOrder(order.id, order.orderNumber, toNumber(order.payment.amount));
+    return this.getById(orderId, userId);
+  },
+
+  /**
+   * Razorpay webhook. This is the authoritative payment source: unlike
+   * verifyPayment (which relies on the customer's browser calling back), it
+   * fires from Razorpay's servers even if the checkout tab was closed.
+   */
+  async handleGatewayWebhook(rawBody: Buffer, signature: string | undefined) {
+    if (!env.razorpayEnabled || !env.RAZORPAY_WEBHOOK_SECRET) throw ApiError.badRequest('Webhook not configured');
+    if (!signature) throw ApiError.badRequest('Missing signature');
+
+    const expected = crypto.createHmac('sha256', env.RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex');
+    const valid = expected.length === signature.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    if (!valid) throw ApiError.badRequest('Invalid webhook signature');
+
+    const event = JSON.parse(rawBody.toString('utf8')) as {
+      event: string;
+      payload?: { payment?: { entity?: { id: string; order_id: string } } };
+    };
+
+    const entity = event.payload?.payment?.entity;
+    if (!entity) return; // An event type we don't act on.
+
+    const payment = await prisma.payment.findFirst({
+      where: { gatewayResponse: { path: ['razorpayOrderId'], equals: entity.order_id } },
+    });
+    if (!payment) {
+      logger.warn({ razorpayOrderId: entity.order_id }, 'Razorpay webhook for an unknown order');
+      return;
+    }
+
+    if (event.event === 'payment.captured' && payment.status !== 'PAID') {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'PAID',
+          paidAt: new Date(),
+          transactionRef: entity.id,
+          gatewayResponse: { ...(payment.gatewayResponse as Record<string, unknown> | null), razorpayPaymentId: entity.id },
+        },
+      });
+    } else if (event.event === 'payment.failed' && payment.status === 'PENDING') {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
+    }
+  },
+
   /** Public-facing tracking summary for the order tracking page. */
   async track(orderNumber: string, requesterId?: string, isAdmin = false) {
     const order = await this.getByNumber(orderNumber, requesterId, isAdmin);
@@ -509,6 +643,32 @@ const STAGE_LABELS: Record<OrderStatus, string> = {
   CANCELLED: 'Cancelled',
   RETURNED: 'Returned',
 };
+
+/**
+ * Creates the Razorpay order for a freshly-placed (or retried) order and
+ * stashes its id on the Payment row so the client can open Checkout.
+ * Deliberately called outside any DB transaction -- it's a network call to a
+ * third party, and a slow or failed gateway request must not roll back stock
+ * decrements or hold a transaction's lock/timeout budget.
+ */
+async function createGatewayOrder(orderId: string, orderNumber: string, total: number): Promise<void> {
+  try {
+    const gatewayOrder = await razorpay().orders.create({
+      amount: Math.round(total * 100), // Razorpay wants the amount in paise.
+      currency: 'INR',
+      receipt: orderNumber,
+    });
+    await prisma.payment.update({
+      where: { orderId },
+      data: { gatewayResponse: { razorpayOrderId: gatewayOrder.id } },
+    });
+  } catch (err) {
+    logger.error({ err, orderId }, 'failed to create Razorpay order');
+    // Payment stays PENDING with no razorpayOrderId; the client shows no
+    // gateway popup, and the order detail page's "Complete payment" button
+    // (retryPayment) lets the customer try again.
+  }
+}
 
 /** Dairy is next-day delivery; two days if ordered after the 6pm cut-off. */
 function estimateDelivery(placedAt: Date | string): Date {
