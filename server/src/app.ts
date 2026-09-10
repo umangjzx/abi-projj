@@ -71,8 +71,12 @@ export function createApp(): Application {
   app.use(
     express.json({
       limit: '1mb',
+      // `verify`'s req is typed as the bare Node `IncomingMessage` (from
+      // @types/body-parser), not Express.Request, even though this is the
+      // same request object Express hands to every other handler -- hence
+      // the cast to reach the `rawBody` property declared above.
       verify: (req, _res, buf) => {
-        req.rawBody = buf;
+        (req as express.Request).rawBody = buf;
       },
     }),
   );
