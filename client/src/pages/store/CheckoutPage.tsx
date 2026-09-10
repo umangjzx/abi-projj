@@ -50,13 +50,12 @@ export default function CheckoutPage() {
     }
   }, [addresses, selectedAddressId]);
 
-  const verifyPayment = useMutation({
-    mutationFn: (vars: {
-      orderId: string;
-      razorpayOrderId: string;
-      razorpayPaymentId: string;
-      razorpaySignature: string;
-    }) => api.post<Order>(`/orders/${vars.orderId}/payment/verify`, vars),
+  const verifyPayment = useMutation<
+    Order,
+    ApiError,
+    { orderId: string; razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }
+  >({
+    mutationFn: (vars) => api.post<Order>(`/orders/${vars.orderId}/payment/verify`, vars),
   });
 
   const placeOrder = useMutation({

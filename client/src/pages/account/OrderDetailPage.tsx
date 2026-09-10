@@ -55,9 +55,12 @@ export default function OrderDetailPage() {
     }
   };
 
-  const verifyPayment = useMutation({
-    mutationFn: (vars: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
-      api.post<Order>(`/orders/${id}/payment/verify`, vars),
+  const verifyPayment = useMutation<
+    Order,
+    ApiError,
+    { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }
+  >({
+    mutationFn: (vars) => api.post<Order>(`/orders/${id}/payment/verify`, vars),
   });
 
   const completePayment = async () => {
